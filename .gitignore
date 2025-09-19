@@ -1,0 +1,75 @@
+# -------------------------
+# Zig build artifacts
+# -------------------------
+.zig-cache/
+zig-out/
+
+# Cross-platform binaries
+*.exe
+*.dll
+*.obj
+*.o
+*.pdb
+*.lib
+*.so
+*.dylib
+*.a
+
+# -------------------------
+# OS-specific files
+# -------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux / Unix
+*~
+.nfs*
+
+# -------------------------
+# IDE / Editor files
+# -------------------------
+# VS Code
+.vscode/
+
+# JetBrains IDEs (CLion, IntelliJ, etc.)
+.idea/
+
+# Eclipse
+.project
+.settings/
+.classpath
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim / Neovim
+*.swp
+*.swo
+
+# Backup / temp files
+*.tmp
+*.bak
+*.orig
+
+# -------------------------
+# Build / distribution folders
+# -------------------------
+build/
+dist/
+out/
+release/
+debug/
+
+# -------------------------
+# Logs
+# -------------------------
+*.log
+logs/
