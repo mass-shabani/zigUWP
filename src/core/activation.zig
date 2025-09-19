@@ -74,6 +74,9 @@ pub const ActivationFactoryManager = struct {
             return winrt_core.hrToError(hr);
         }
 
+        // Use self to avoid unused parameter warning
+        _ = self;
+
         return factory orelse error.NullFactory;
     }
 

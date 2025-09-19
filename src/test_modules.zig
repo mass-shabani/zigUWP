@@ -61,8 +61,8 @@ fn testWinRTCore() !void {
 fn testHString() !void {
     // Test HSTRING creation and destruction
     const test_string = "Hello, WinRT!";
-    const hstring = try hstring.create(test_string);
-    defer hstring.destroy(hstring);
+    const hstring_obj = try hstring.create(test_string);
+    defer hstring.destroy(hstring_obj);
 
     std.debug.print("  - HSTRING creation/destruction working\n", .{});
 
@@ -103,15 +103,15 @@ fn testErrorHandling(allocator: std.mem.Allocator) !void {
 
 fn testComBase() !void {
     // Test COM object base functionality
-    var com_base = com_base.ComObjectBase.init(std.heap.page_allocator);
+    var com_object_base = com_base.ComObjectBase.init(std.heap.page_allocator);
 
     // Test reference counting
-    const initial_count = com_base.addRef();
+    const initial_count = com_object_base.addRef();
     if (initial_count != 2) { // Should be 2 (initial 1 + addRef)
         return error.RefCountTestFailed;
     }
 
-    const decremented_count = com_base.release();
+    const decremented_count = com_object_base.release();
     if (decremented_count != 1) {
         return error.RefCountTestFailed;
     }

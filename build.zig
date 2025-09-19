@@ -41,25 +41,6 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(test_exe);
 
-    // Hybrid Win32+WinRT test (for comparison)
-    const hybrid_exe = b.addExecutable(.{
-        .name = "hybrid_window",
-        .root_source_file = b.path("src/hybrid_window.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    hybrid_exe.addLibraryPath(b.path("Libs"));
-    hybrid_exe.linkSystemLibrary("ole32");
-    hybrid_exe.linkSystemLibrary("windowsapp");
-    hybrid_exe.linkSystemLibrary("runtimeobject");
-    hybrid_exe.linkSystemLibrary("user32");
-    hybrid_exe.linkSystemLibrary("gdi32");
-    hybrid_exe.linkSystemLibrary("kernel32");
-    hybrid_exe.linkLibC();
-
-    b.installArtifact(hybrid_exe);
-
     // Module testing executable
     const module_test_exe = b.addExecutable(.{
         .name = "module_test",
@@ -83,9 +64,6 @@ pub fn build(b: *std.Build) void {
     const run_test_cmd = b.addRunArtifact(test_exe);
     run_test_cmd.step.dependOn(b.getInstallStep());
 
-    const run_hybrid_cmd = b.addRunArtifact(hybrid_exe);
-    run_hybrid_cmd.step.dependOn(b.getInstallStep());
-
     const run_module_test_cmd = b.addRunArtifact(module_test_exe);
     run_module_test_cmd.step.dependOn(b.getInstallStep());
 
@@ -93,7 +71,6 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_cmd.addArgs(args);
         run_test_cmd.addArgs(args);
-        run_hybrid_cmd.addArgs(args);
         run_module_test_cmd.addArgs(args);
     }
 
@@ -103,9 +80,6 @@ pub fn build(b: *std.Build) void {
 
     const test_winrt_step = b.step("test-winrt", "Run simple WinRT test");
     test_winrt_step.dependOn(&run_test_cmd.step);
-
-    const hybrid_step = b.step("run-hybrid", "Run hybrid Win32+WinRT window (for comparison)");
-    hybrid_step.dependOn(&run_hybrid_cmd.step);
 
     const module_test_step = b.step("test-modules", "Test individual modules");
     module_test_step.dependOn(&run_module_test_cmd.step);
@@ -129,7 +103,8 @@ pub fn build(b: *std.Build) void {
 
     // Clean step
     const clean_step = b.step("clean", "Clean build artifacts");
-    clean_step.dependOn(&b.getInstallStep().step);
+    // Note: Zig build system handles cleaning automatically, so we just create an empty step
+    _ = clean_step;
 
     // Documentation step
     const doc_step = b.step("docs", "Generate documentation");
@@ -152,7 +127,6 @@ pub fn build(b: *std.Build) void {
     const help_cmd = b.addSystemCommand(&[_][]const u8{ "echo", "Available commands:\n" ++
         "  zig build run           - Run the main UWP application\n" ++
         "  zig build test-winrt    - Test basic WinRT functionality\n" ++
-        "  zig build run-hybrid    - Run hybrid Win32+WinRT demo\n" ++
         "  zig build test-modules  - Test individual modules\n" ++
         "  zig build test          - Run unit tests\n" ++
         "  zig build docs          - Generate documentation\n" ++
