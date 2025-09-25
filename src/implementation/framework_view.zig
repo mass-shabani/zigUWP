@@ -14,7 +14,7 @@ const TrustLevel = winrt_core.TrustLevel;
 const S_OK = winrt_core.S_OK;
 
 // Our custom FrameworkView implementation
-pub const UWPFrameworkView = extern struct {
+pub const UWPFrameworkView = struct {
     vtbl: *const view_interfaces.IFrameworkView.IFrameworkViewVtbl,
     base: com_base.ComObjectBase,
 

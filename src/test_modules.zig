@@ -147,7 +147,7 @@ fn testActivationSystem(allocator: std.mem.Allocator) !void {
     var factory_manager = activation.ActivationFactoryManager.init(allocator);
 
     // Try to get a common WinRT factory (Calendar)
-    factory_manager.getActivationFactory(hstring.WinRTClassNames.CALENDAR, &com_base.IID_IActivationFactory) catch |err| {
+    _ = factory_manager.getActivationFactory(hstring.WinRTClassNames.CALENDAR, &com_base.IID_IActivationFactory) catch |err| {
         std.debug.print("  - Activation factory test: {} (expected if WinRT not fully available)\n", .{err});
         return;
     };

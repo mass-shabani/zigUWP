@@ -17,7 +17,10 @@ pub const HStringError = error{
 pub fn create(utf8_str: []const u8) HStringError!HSTRING {
     if (utf8_str.len == 0) {
         var hstring: HSTRING = null;
-        const hr = winrt_core.WindowsCreateString(null, 0, &hstring);
+        // For empty strings, we need to pass a null pointer of the correct type
+        // LPCWSTR is typically [*:0]const u16, so we'll create a dummy variable and cast its address
+        var dummy: [1]u16 = undefined;
+        const hr = winrt_core.WindowsCreateString(@ptrCast(&dummy), 0, &hstring);
         if (hr != S_OK) {
             std.debug.print("WindowsCreateString failed for empty string with HRESULT: 0x{X}\n", .{hr});
             return HStringError.CreateStringFailed;
