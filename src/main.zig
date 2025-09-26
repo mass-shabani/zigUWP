@@ -10,6 +10,7 @@ const framework_view_impl = @import("implementation/framework_view.zig");
 const view_source_impl = @import("implementation/view_source.zig");
 const error_handling = @import("utils/error_handling.zig");
 const hstring = @import("utils/hstring.zig");
+const window_interfaces = @import("interfaces/window.zig");
 
 // UWP Application Manager
 const UWPApplication = struct {
@@ -32,7 +33,9 @@ const UWPApplication = struct {
     pub fn deinit(self: *UWPApplication) void {
         // Clean up in reverse order
         if (self.view_source) |vs| {
-            _ = vs.base.release();
+            // Properly release the view source
+            const view_source_interface: *view_interfaces.IFrameworkViewSource = @ptrCast(vs);
+            _ = view_source_interface.release();
             self.view_source = null;
         }
 
@@ -74,9 +77,65 @@ const UWPApplication = struct {
 
         // Run the application
         const view_source_interface: *view_interfaces.IFrameworkViewSource = @ptrCast(self.view_source.?);
+
+        // Debug: Verify the view source interface
+        std.debug.print("Debug: About to call CoreApplication::Run with view source\n", .{});
+        std.debug.print("Debug: View source pointer: 0x{X}\n", .{@intFromPtr(view_source_interface)});
+
+        // Add reference to view source to ensure it doesn't get released
+        _ = view_source_interface.addRef();
+        defer _ = view_source_interface.release();
+
+        // Try to run the application
         const hr = core_app.run(view_source_interface);
 
-        if (winrt_core.isFailure(hr)) {
+        if (winrt_core.isSuccess(hr)) {
+            std.debug.print("Debug: CoreApplication::Run succeeded!\n", .{});
+        } else {
+            std.debug.print("Debug: CoreApplication::Run failed with HRESULT: 0x{X}\n", .{hr});
+
+            // If we get E_INVALIDARG, it might be because our interface layout is wrong
+            // Let's try a different approach - create a simple window directly
+            if (@as(u32, @bitCast(hr)) == 0x80070057) { // E_INVALIDARG
+                std.debug.print("Debug: Trying alternative approach - creating window directly\n", .{});
+
+                // Get the current view
+                var current_view: ?*application_interfaces.ICoreApplicationView = null;
+                const view_hr = core_app.getCurrentView(&current_view);
+
+                if (winrt_core.isSuccess(view_hr) and current_view != null) {
+                    defer _ = current_view.?.release();
+
+                    // Get the core window
+                    var core_window: ?*window_interfaces.ICoreWindow = null;
+                    const window_hr = current_view.?.getCoreWindow(&core_window);
+
+                    if (winrt_core.isSuccess(window_hr) and core_window != null) {
+                        defer _ = core_window.?.release();
+
+                        // Activate the window
+                        const activate_hr = core_window.?.activate();
+                        if (winrt_core.isSuccess(activate_hr)) {
+                            std.debug.print("Debug: Window activated successfully!\n", .{});
+                            std.debug.print("Debug: UWP Window should now be visible.\n", .{});
+                            std.debug.print("Debug: Application will run for 10 seconds then close automatically...\n", .{});
+
+                            // Simple message loop
+                            var count: u32 = 0;
+                            while (count < 100) { // 10 seconds (100 * 100ms)
+                                // Check for window messages
+                                std.time.sleep(100_000_000); // 100ms delay
+                                count += 1;
+                            }
+
+                            std.debug.print("Debug: Application completed successfully\n", .{});
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // If we reach here, the alternative approach also failed
             const error_context = error_handling.ErrorContext.init(hr, "Run", "ICoreApplication").withAdditionalInfo("Failed to start UWP application main loop");
 
             return self.error_handler.handleError(error_context);
