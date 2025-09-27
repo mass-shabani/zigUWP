@@ -17,29 +17,15 @@ pub fn build(b: *std.Build) void {
 
     // Link required Windows libraries for UWP
     exe.linkSystemLibrary("ole32"); // COM support
-    exe.linkSystemLibrary("windowsapp"); // WinRT runtime
+    exe.linkSystemLibrary("WindowsApp"); // WinRT runtime
     exe.linkSystemLibrary("runtimeobject"); // WinRT runtime objects
+    exe.linkSystemLibrary("combase"); // COM base library
 
     // Link C runtime
     exe.linkLibC();
 
     b.installArtifact(exe);
 
-    // Simple WinRT test executable (for debugging)
-    const test_exe = b.addExecutable(.{
-        .name = "simple_winrt_test",
-        .root_source_file = b.path("src/simple_winrt_test.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    test_exe.addLibraryPath(b.path("Libs"));
-    test_exe.linkSystemLibrary("ole32");
-    test_exe.linkSystemLibrary("windowsapp");
-    test_exe.linkSystemLibrary("runtimeobject");
-    test_exe.linkLibC();
-
-    b.installArtifact(test_exe);
 
     // Module testing executable
     const module_test_exe = b.addExecutable(.{
@@ -51,8 +37,9 @@ pub fn build(b: *std.Build) void {
 
     module_test_exe.addLibraryPath(b.path("Libs"));
     module_test_exe.linkSystemLibrary("ole32");
-    module_test_exe.linkSystemLibrary("windowsapp");
+    module_test_exe.linkSystemLibrary("WindowsApp");
     module_test_exe.linkSystemLibrary("runtimeobject");
+    module_test_exe.linkSystemLibrary("combase");
     module_test_exe.linkLibC();
 
     b.installArtifact(module_test_exe);
@@ -61,25 +48,18 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    const run_test_cmd = b.addRunArtifact(test_exe);
-    run_test_cmd.step.dependOn(b.getInstallStep());
-
     const run_module_test_cmd = b.addRunArtifact(module_test_exe);
     run_module_test_cmd.step.dependOn(b.getInstallStep());
 
     // Pass arguments to run commands
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        run_test_cmd.addArgs(args);
         run_module_test_cmd.addArgs(args);
     }
 
     // Build steps
     const run_step = b.step("run", "Run the main UWP application");
     run_step.dependOn(&run_cmd.step);
-
-    const test_winrt_step = b.step("test-winrt", "Run simple WinRT test");
-    test_winrt_step.dependOn(&run_test_cmd.step);
 
     const module_test_step = b.step("test-modules", "Test individual modules");
     module_test_step.dependOn(&run_module_test_cmd.step);
@@ -93,8 +73,9 @@ pub fn build(b: *std.Build) void {
 
     unit_tests.addLibraryPath(b.path("Libs"));
     unit_tests.linkSystemLibrary("ole32");
-    unit_tests.linkSystemLibrary("windowsapp");
+    unit_tests.linkSystemLibrary("WindowsApp");
     unit_tests.linkSystemLibrary("runtimeobject");
+    unit_tests.linkSystemLibrary("combase");
     unit_tests.linkLibC();
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
@@ -126,7 +107,6 @@ pub fn build(b: *std.Build) void {
     const help_step = b.step("help", "Show available build commands");
     const help_cmd = b.addSystemCommand(&[_][]const u8{ "echo", "Available commands:\n" ++
         "  zig build run           - Run the main UWP application\n" ++
-        "  zig build test-winrt    - Test basic WinRT functionality\n" ++
         "  zig build test-modules  - Test individual modules\n" ++
         "  zig build test          - Run unit tests\n" ++
         "  zig build docs          - Generate documentation\n" ++

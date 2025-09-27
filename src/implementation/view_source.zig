@@ -15,21 +15,25 @@ const S_OK = winrt_core.S_OK;
 // Our custom FrameworkViewSource implementation
 pub const UWPFrameworkViewSource = struct {
     vtbl: *const view_interfaces.IFrameworkViewSource.IFrameworkViewSourceVtbl,
-    base: com_base.ComObjectBase,
+    base_ptr: *com_base.ComObjectBase,
 
     const Self = @This();
 
     pub fn create(allocator: std.mem.Allocator) !*Self {
+        const base = try allocator.create(com_base.ComObjectBase);
+        base.* = com_base.ComObjectBase.init(allocator);
+        
         const instance = try allocator.create(Self);
         instance.* = Self{
             .vtbl = &VTable,
-            .base = com_base.ComObjectBase.init(allocator),
+            .base_ptr = base,
         };
         return instance;
     }
 
     pub fn destroy(self: *Self) void {
-        const allocator = self.base.allocator;
+        const allocator = self.base_ptr.allocator;
+        allocator.destroy(self.base_ptr);
         allocator.destroy(self);
     }
 
@@ -46,12 +50,12 @@ pub const UWPFrameworkViewSource = struct {
 
     fn addRef(self: *view_interfaces.IFrameworkViewSource) callconv(WINAPI) u32 {
         const instance: *Self = @alignCast(@ptrCast(self));
-        return instance.base.addRef();
+        return instance.base_ptr.addRef();
     }
 
     fn release(self: *view_interfaces.IFrameworkViewSource) callconv(WINAPI) u32 {
         const instance: *Self = @alignCast(@ptrCast(self));
-        const ref_count = instance.base.release();
+        const ref_count = instance.base_ptr.release();
 
         if (ref_count == 0) {
             instance.destroy();
@@ -83,7 +87,7 @@ pub const UWPFrameworkViewSource = struct {
         std.debug.print("FrameworkViewSource: CreateView called\n", .{});
 
         // Create our custom FrameworkView
-        const framework_view_instance = framework_view.UWPFrameworkView.create(instance.base.allocator) catch |err| {
+        const framework_view_instance = framework_view.UWPFrameworkView.create(instance.base_ptr.allocator) catch |err| {
             std.debug.print("Failed to create FrameworkView: {}\n", .{err});
             view.* = null;
             return @bitCast(winrt_core.E_FAIL);

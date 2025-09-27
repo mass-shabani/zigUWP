@@ -16,7 +16,7 @@ const S_OK = winrt_core.S_OK;
 // Our custom FrameworkView implementation
 pub const UWPFrameworkView = struct {
     vtbl: *const view_interfaces.IFrameworkView.IFrameworkViewVtbl,
-    base: com_base.ComObjectBase,
+    base_ptr: *com_base.ComObjectBase,
 
     // State management
     app_view: ?*application_interfaces.ICoreApplicationView,
@@ -27,10 +27,13 @@ pub const UWPFrameworkView = struct {
     const Self = @This();
 
     pub fn create(allocator: std.mem.Allocator) !*Self {
+        const base = try allocator.create(com_base.ComObjectBase);
+        base.* = com_base.ComObjectBase.init(allocator);
+        
         const instance = try allocator.create(Self);
         instance.* = Self{
             .vtbl = &VTable,
-            .base = com_base.ComObjectBase.init(allocator),
+            .base_ptr = base,
             .app_view = null,
             .core_window = null,
             .window_manager = null,
@@ -54,12 +57,12 @@ pub const UWPFrameworkView = struct {
         // Clean up resources
         if (self.window_manager) |wm| {
             wm.deinit();
-            self.base.allocator.destroy(wm);
+            self.base_ptr.allocator.destroy(wm);
         }
 
         if (self.error_handler) |eh| {
             eh.deinit();
-            self.base.allocator.destroy(eh);
+            self.base_ptr.allocator.destroy(eh);
         }
 
         if (self.core_window) |window| {
@@ -70,7 +73,8 @@ pub const UWPFrameworkView = struct {
             _ = view.release();
         }
 
-        const allocator = self.base.allocator;
+        const allocator = self.base_ptr.allocator;
+        allocator.destroy(self.base_ptr);
         allocator.destroy(self);
     }
 
@@ -87,12 +91,12 @@ pub const UWPFrameworkView = struct {
 
     fn addRef(self: *view_interfaces.IFrameworkView) callconv(WINAPI) u32 {
         const instance: *Self = @alignCast(@ptrCast(self));
-        return instance.base.addRef();
+        return instance.base_ptr.addRef();
     }
 
     fn release(self: *view_interfaces.IFrameworkView) callconv(WINAPI) u32 {
         const instance: *Self = @alignCast(@ptrCast(self));
-        const ref_count = instance.base.release();
+        const ref_count = instance.base_ptr.release();
 
         if (ref_count == 0) {
             instance.destroy();
