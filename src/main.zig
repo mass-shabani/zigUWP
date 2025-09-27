@@ -33,13 +33,9 @@ const UWPApplication = struct {
     pub fn deinit(self: *UWPApplication) void {
         // Clean up in reverse order
         if (self.view_source) |vs| {
-<<<<<<< HEAD
             // Properly release the view source
             const view_source_interface: *view_interfaces.IFrameworkViewSource = @ptrCast(vs);
             _ = view_source_interface.release();
-=======
-            _ = vs.base_ptr.release();
->>>>>>> Warp-Edit
             self.view_source = null;
         }
 
