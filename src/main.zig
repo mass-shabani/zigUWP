@@ -96,7 +96,9 @@ const UWPApplication = struct {
 
             // If we get E_INVALIDARG, it might be because our interface layout is wrong
             // Let's try a different approach - create a simple window directly
-            if (@as(u32, @bitCast(hr)) == 0x80070057) { // E_INVALIDARG
+            const hr_u32 = @as(u32, @bitCast(hr));
+
+            if (hr_u32 == 0x80070057) { // E_INVALIDARG
                 std.debug.print("Debug: Trying alternative approach - creating window directly\n", .{});
 
                 // Get the current view
