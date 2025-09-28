@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // *** Build steps
     // Main UWP executable with modular architecture
     const exe = b.addExecutable(.{
         .name = "zigUWP",
@@ -27,10 +28,16 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    const run_step = b.step("run", "Run the main UWP application");
+    run_step.dependOn(&run_cmd.step);
+
     // Create UWP package after installation
     _ = appx.createPackageStep(b);
 
-    // Module testing executable
+    // *** Module testing executable
     const module_test_exe = b.addExecutable(.{
         .name = "module_test",
         .root_source_file = b.path("src/test_modules.zig"),
@@ -47,10 +54,6 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(module_test_exe);
 
-    // Run commands
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-
     const run_module_test_cmd = b.addRunArtifact(module_test_exe);
     run_module_test_cmd.step.dependOn(b.getInstallStep());
 
@@ -60,14 +63,10 @@ pub fn build(b: *std.Build) void {
         run_module_test_cmd.addArgs(args);
     }
 
-    // Build steps
-    const run_step = b.step("run", "Run the main UWP application");
-    run_step.dependOn(&run_cmd.step);
-
     const module_test_step = b.step("test-modules", "Test individual modules");
     module_test_step.dependOn(&run_module_test_cmd.step);
 
-    // Unit tests for the modules
+    // *** Unit tests for the modules
     const unit_tests = b.addTest(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -85,10 +84,10 @@ pub fn build(b: *std.Build) void {
     const unit_test_step = b.step("test", "Run unit tests");
     unit_test_step.dependOn(&run_unit_tests.step);
 
-    // Clean step
+    // *** Clean step
     _ = appx.createCleanStep(b);
 
-    // Documentation step
+    // *** Documentation step
     const doc_step = b.step("docs", "Generate documentation");
     const doc_obj = b.addObject(.{
         .name = "zigUWP-docs",
@@ -104,42 +103,48 @@ pub fn build(b: *std.Build) void {
         .install_subdir = "docs",
     }).step);
 
-    // Help step
+    // *** Help step
     const help_step = b.step("help", "Show available build commands");
 
-    const help_cmd = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "Available commands:\ndd\ndd\ndd" });
-    help_step.dependOn(&help_cmd.step);
+    // Define the helper struct and its 'make' function
+    const LogHelpStep = struct {
+        step: std.Build.Step,
 
-    const help_cmd2 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build run           - Run the main UWP application" });
-    help_step.dependOn(&help_cmd2.step);
+        pub fn create(bld: *std.Build) *@This() {
+            const self = bld.allocator.create(@This()) catch @panic("OOM");
+            self.* = .{
+                .step = std.Build.Step.init(.{
+                    .id = .custom,
+                    .name = "log help info",
+                    .owner = bld,
+                    .makeFn = make, // This now points to the correct function signature
+                }),
+            };
+            return self;
+        }
 
-    const help_cmd3 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build test-modules  - Test individual modules" });
-    help_step.dependOn(&help_cmd3.step);
+        // The correct function signature for a build step's make function
+        fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
+            _ = step;
+            _ = options;
 
-    const help_cmd4 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build test          - Run unit tests" });
-    help_step.dependOn(&help_cmd4.step);
+            std.log.info(
+                \\Available commands:
+                \\  zig build run           - Run the main UWP application
+                \\  zig build test-modules  - Test individual modules
+                \\  zig build test          - Run unit tests
+                \\  zig build docs          - Generate documentation
+                \\  zig build package       - Create UWP package (appx)
+                \\  zig build sign-appx     - Sign UWP package
+                \\  zig build install-appx  - Install UWP package
+                \\  zig build all-appx      - Build, package, sign and install UWP application
+                \\  zig build clean         - Clean build artifacts
+                \\  zig build clean-all     - Clean build artifacts and packages
+                \\  zig build help          - Show this help
+            , .{});
+        }
+    };
 
-    const help_cmd5 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build docs          - Generate documentation" });
-    help_step.dependOn(&help_cmd5.step);
-
-    const help_cmd6 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build package       - Create UWP package (appx)" });
-    help_step.dependOn(&help_cmd6.step);
-
-    const help_cmd7 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build sign-appx     - Sign UWP package" });
-    help_step.dependOn(&help_cmd7.step);
-
-    const help_cmd8 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build install-appx  - Install UWP package" });
-    help_step.dependOn(&help_cmd8.step);
-
-    const help_cmd9 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build all-appx      - Build, package, sign and install UWP application" });
-    help_step.dependOn(&help_cmd9.step);
-
-    const help_cmd10 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build clean         - Clean build artifacts" });
-    help_step.dependOn(&help_cmd10.step);
-
-    const help_cmd11 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build clean-all     - Clean build artifacts and packages" });
-    help_step.dependOn(&help_cmd11.step);
-
-    const help_cmd12 = b.addSystemCommand(&[_][]const u8{ "cmd", "/c", "echo", "  zig build help          - Show this help" });
-    help_step.dependOn(&help_cmd12.step);
+    const log_help_step = LogHelpStep.create(b);
+    help_step.dependOn(&log_help_step.step);
 }
