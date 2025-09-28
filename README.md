@@ -1,3 +1,7 @@
+**⚠️ Warning:** This project is being used as a research effort within a larger project and is not yet a usable product. It is newly created and currently under development.
+
+
+
 # ZigUWP - Pure WinRT UWP Application
 
 A professional, modular UWP (Universal Windows Platform) application implementation written entirely in Zig, using pure WinRT APIs without Win32 dependencies for maximum device compatibility.
