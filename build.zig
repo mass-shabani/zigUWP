@@ -106,45 +106,11 @@ pub fn build(b: *std.Build) void {
     // *** Help step
     const help_step = b.step("help", "Show available build commands");
 
-    // Define the helper struct and its 'make' function
-    const LogHelpStep = struct {
-        step: std.Build.Step,
-
-        pub fn create(bld: *std.Build) *@This() {
-            const self = bld.allocator.create(@This()) catch @panic("OOM");
-            self.* = .{
-                .step = std.Build.Step.init(.{
-                    .id = .custom,
-                    .name = "log help info",
-                    .owner = bld,
-                    .makeFn = make, // This now points to the correct function signature
-                }),
-            };
-            return self;
-        }
-
-        // The correct function signature for a build step's make function
-        fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
-            _ = step;
-            _ = options;
-
-            std.log.info(
-                \\Available commands:
-                \\  zig build run           - Run the main UWP application
-                \\  zig build test-modules  - Test individual modules
-                \\  zig build test          - Run unit tests
-                \\  zig build docs          - Generate documentation
-                \\  zig build package       - Create UWP package (appx)
-                \\  zig build sign-appx     - Sign UWP package
-                \\  zig build install-appx  - Install UWP package
-                \\  zig build all-appx      - Build, package, sign and install UWP application
-                \\  zig build clean         - Clean build artifacts
-                \\  zig build clean-all     - Clean build artifacts and packages
-                \\  zig build help          - Show this help
-            , .{});
-        }
-    };
-
-    const log_help_step = LogHelpStep.create(b);
-    help_step.dependOn(&log_help_step.step);
+    // Simple help step using system command
+    const help_cmd = b.addSystemCommand(&.{
+        "PowerShell",
+        "-Command",
+        "Write-Host 'Available commands:'; Write-Host '  zig build run           - Run the main UWP application'; Write-Host '  zig build test-modules  - Test individual modules'; Write-Host '  zig build test          - Run unit tests'; Write-Host '  zig build docs          - Generate documentation'; Write-Host '  zig build package       - Create UWP package (appx)'; Write-Host '  zig build sign-appx     - Sign UWP package'; Write-Host '  zig build install-appx  - Install UWP package'; Write-Host '  zig build all-appx      - Build, package, sign and install UWP application'; Write-Host '  zig build clean         - Clean build artifacts'; Write-Host '  zig build clean-all     - Clean build artifacts and packages'; Write-Host '  zig build help          - Show this help'",
+    });
+    help_step.dependOn(&help_cmd.step);
 }
