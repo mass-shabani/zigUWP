@@ -1,3 +1,4 @@
+#sign-appx.ps1
 # PowerShell script for signing UWP packages
 param(
     [string]$PackagePath = "zig-out/bin/zigUWP.appx",
