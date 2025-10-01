@@ -1,4 +1,13 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const windows = std.os.windows;
+const HRESULT = windows.HRESULT;
+const WINAPI = windows.WINAPI;
+const HINSTANCE = windows.HINSTANCE;
+const LPWSTR = windows.LPWSTR;
+
+// Windows constants
+const SW_SHOW: i32 = 5;
 
 // Import our modular WinRT components
 const winrt_core = @import("core/winrt_core.zig");
@@ -11,6 +20,10 @@ const view_source_impl = @import("implementation/view_source.zig");
 const error_handling = @import("utils/error_handling.zig");
 const hstring = @import("utils/hstring.zig");
 const window_interfaces = @import("interfaces/window.zig");
+
+// Global allocator (for simplicity in UWP context)
+var gpa: std.heap.GeneralPurposeAllocator(.{}) = undefined;
+var global_allocator: std.mem.Allocator = undefined;
 
 // UWP Application Manager
 const UWPApplication = struct {
@@ -31,9 +44,7 @@ const UWPApplication = struct {
     }
 
     pub fn deinit(self: *UWPApplication) void {
-        // Clean up in reverse order
         if (self.view_source) |vs| {
-            // Properly release the view source
             const view_source_interface: *view_interfaces.IFrameworkViewSource = @ptrCast(vs);
             _ = view_source_interface.release();
             self.view_source = null;
@@ -45,19 +56,17 @@ const UWPApplication = struct {
     }
 
     pub fn startup(self: *UWPApplication) !void {
-        std.debug.print("=== ZigUWP - Pure WinRT UWP Application ===\n", .{});
-        std.debug.print("Initializing WinRT systems...\n\n", .{});
+        outputDebug("=== ZigUWP - Pure WinRT UWP Application ===\n");
+        outputDebug("Initializing WinRT systems...\n\n");
 
-        // Initialize WinRT system
         try self.winrt_system.startup();
 
-        std.debug.print("WinRT initialization completed successfully\n", .{});
+        outputDebug("WinRT initialization completed successfully\n");
     }
 
     pub fn createViewSource(self: *UWPApplication) !void {
-        // Create our custom view source
         self.view_source = try view_source_impl.UWPFrameworkViewSource.create(self.allocator);
-        std.debug.print("FrameworkViewSource created successfully\n", .{});
+        outputDebug("FrameworkViewSource created successfully\n");
     }
 
     pub fn run(self: *UWPApplication) !void {
@@ -65,145 +74,155 @@ const UWPApplication = struct {
             return error.NoViewSource;
         }
 
-        // Get CoreApplication
         const core_app = try self.core_app_manager.getCoreApplication();
         defer _ = core_app.release();
 
-        std.debug.print("CoreApplication obtained successfully\n", .{});
+        outputDebug("CoreApplication obtained successfully\n");
+        outputDebug("\n=== Starting UWP Application ===\n");
 
-        std.debug.print("\n=== Starting UWP Application ===\n", .{});
-        std.debug.print("This will create a UWP window using pure WinRT APIs\n", .{});
-        std.debug.print("The application will run until the window is closed\n\n", .{});
-
-        // Run the application
         const view_source_interface: *view_interfaces.IFrameworkViewSource = @ptrCast(self.view_source.?);
-
-        // Debug: Verify the view source interface
-        std.debug.print("Debug: About to call CoreApplication::Run with view source\n", .{});
-        std.debug.print("Debug: View source pointer: 0x{X}\n", .{@intFromPtr(view_source_interface)});
-
-        // Add reference to view source to ensure it doesn't get released
         _ = view_source_interface.addRef();
         defer _ = view_source_interface.release();
 
-        // Try to run the application
         const hr = core_app.run(view_source_interface);
 
         if (winrt_core.isSuccess(hr)) {
-            std.debug.print("Debug: CoreApplication::Run succeeded!\n", .{});
+            outputDebug("CoreApplication::Run succeeded!\n");
         } else {
-            std.debug.print("Debug: CoreApplication::Run failed with HRESULT: 0x{X}\n", .{hr});
-
-            // If we get E_INVALIDARG, it might be because our interface layout is wrong
-            // Let's try a different approach - create a simple window directly
             const hr_u32 = @as(u32, @bitCast(hr));
+            var buf: [256]u8 = undefined;
+            const msg = std.fmt.bufPrint(&buf, "CoreApplication::Run failed: 0x{X}\n", .{hr_u32}) catch "Error formatting message\n";
+            outputDebug(msg);
 
-            if (hr_u32 == 0x80070057) { // E_INVALIDARG
-                std.debug.print("Debug: Trying alternative approach - creating window directly\n", .{});
-
-                // Get the current view
-                var current_view: ?*application_interfaces.ICoreApplicationView = null;
-                const view_hr = core_app.getCurrentView(&current_view);
-
-                if (winrt_core.isSuccess(view_hr) and current_view != null) {
-                    defer _ = current_view.?.release();
-
-                    // Get the core window
-                    var core_window: ?*window_interfaces.ICoreWindow = null;
-                    const window_hr = current_view.?.getCoreWindow(&core_window);
-
-                    if (winrt_core.isSuccess(window_hr) and core_window != null) {
-                        defer _ = core_window.?.release();
-
-                        // Activate the window
-                        const activate_hr = core_window.?.activate();
-                        if (winrt_core.isSuccess(activate_hr)) {
-                            std.debug.print("Debug: Window activated successfully!\n", .{});
-                            std.debug.print("Debug: UWP Window should now be visible.\n", .{});
-                            std.debug.print("Debug: Application will run for 10 seconds then close automatically...\n", .{});
-
-                            // Simple message loop
-                            var count: u32 = 0;
-                            while (count < 100) { // 10 seconds (100 * 100ms)
-                                // Check for window messages
-                                std.time.sleep(100_000_000); // 100ms delay
-                                count += 1;
-                            }
-
-                            std.debug.print("Debug: Application completed successfully\n", .{});
-                            return;
-                        }
-                    }
-                }
-            }
-
-            // If we reach here, the alternative approach also failed
-            const error_context = error_handling.ErrorContext.init(hr, "Run", "ICoreApplication").withAdditionalInfo("Failed to start UWP application main loop");
-
+            const error_context = error_handling.ErrorContext.init(hr, "Run", "ICoreApplication");
             return self.error_handler.handleError(error_context);
         }
 
-        std.debug.print("\n=== UWP Application Completed Successfully ===\n", .{});
-    }
-
-    pub fn printSystemInfo(self: *UWPApplication) void {
-        _ = self;
-        std.debug.print("\n=== System Information ===\n", .{});
-        std.debug.print("• Pure WinRT UWP implementation\n", .{});
-        std.debug.print("• No Win32 dependencies for UI\n", .{});
-        std.debug.print("• Compatible with all WinRT devices\n", .{});
-        std.debug.print("• Modular architecture with clean separation\n", .{});
-        std.debug.print("• Professional error handling and logging\n", .{});
-        std.debug.print("• Memory-safe COM object management\n", .{});
-        std.debug.print("===========================\n\n", .{});
+        outputDebug("\n=== UWP Application Completed Successfully ===\n");
     }
 };
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+// Helper function to output debug strings (visible in DebugView)
+fn outputDebug(message: []const u8) void {
+    // Convert to UTF-16 for OutputDebugStringW
+    var wide_buffer: [4096]u16 = undefined;
+    const wide_len = std.unicode.utf8ToUtf16Le(&wide_buffer, message) catch return;
+
+    if (wide_len < wide_buffer.len) {
+        wide_buffer[wide_len] = 0;
+        OutputDebugStringW(@ptrCast(&wide_buffer));
+    }
+}
+
+// Windows API declarations
+extern "kernel32" fn OutputDebugStringW(lpOutputString: [*:0]const u16) callconv(WINAPI) void;
+extern "kernel32" fn GetModuleHandleW(lpModuleName: ?[*:0]const u16) callconv(WINAPI) ?HINSTANCE;
+extern "kernel32" fn GetCommandLineW() callconv(WINAPI) LPWSTR;
+extern "kernel32" fn ExitProcess(exit_code: u32) callconv(WINAPI) noreturn;
+
+/// Main entry point for UWP application
+/// این تابع توسط Windows برای UWP apps صدا زده می‌شود
+pub fn wWinMain(
+    hInstance: HINSTANCE,
+    hPrevInstance: ?HINSTANCE,
+    pCmdLine: LPWSTR,
+    nCmdShow: i32,
+) callconv(WINAPI) i32 {
+    _ = hInstance;
+    _ = hPrevInstance;
+    _ = pCmdLine;
+    _ = nCmdShow;
+
+    outputDebug("\n");
+    outputDebug("=====================================\n");
+    outputDebug("wWinMain CALLED - UWP app starting!\n");
+    outputDebug("=====================================\n");
+    outputDebug("\n");
+
+    // Initialize global allocator
+    gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    global_allocator = gpa.allocator();
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
 
     // Create and initialize UWP application
-    var uwp_app = UWPApplication.init(allocator);
+    var uwp_app = UWPApplication.init(global_allocator);
     defer uwp_app.deinit();
-
-    // Print system information
-    uwp_app.printSystemInfo();
 
     // Startup WinRT systems
     uwp_app.startup() catch |err| {
-        std.debug.print("Failed to startup UWP application: {}\n", .{err});
-        uwp_app.error_handler.printErrorHistory();
-        return err;
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "Failed to startup: {s}\n", .{@errorName(err)}) catch "Startup failed\n";
+        outputDebug(msg);
+        return 1;
     };
 
     // Create view source
     uwp_app.createViewSource() catch |err| {
-        std.debug.print("Failed to create view source: {}\n", .{err});
-        uwp_app.error_handler.printErrorHistory();
-        return err;
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "Failed to create view source: {s}\n", .{@errorName(err)}) catch "View source creation failed\n";
+        outputDebug(msg);
+        return 1;
     };
 
     // Run the application
     uwp_app.run() catch |err| {
-        std.debug.print("Application run failed: {}\n", .{err});
-        uwp_app.error_handler.printErrorHistory();
-        return err;
+        var buf: [256]u8 = undefined;
+        const msg = std.fmt.bufPrint(&buf, "Application run failed: {s}\n", .{@errorName(err)}) catch "Run failed\n";
+        outputDebug(msg);
+        return 1;
     };
 
-    std.debug.print("\n=== Application Analysis ===\n", .{});
-    std.debug.print("This implementation demonstrates:\n", .{});
-    std.debug.print("✓ Pure WinRT UWP architecture\n", .{});
-    std.debug.print("✓ Modular, maintainable code structure\n", .{});
-    std.debug.print("✓ Professional COM object lifecycle management\n", .{});
-    std.debug.print("✓ Comprehensive error handling and debugging\n", .{});
-    std.debug.print("✓ Cross-device WinRT compatibility\n", .{});
-    std.debug.print("✓ Future-ready extensible design\n", .{});
-    std.debug.print("============================\n", .{});
+    outputDebug("\n");
+    outputDebug("=====================================\n");
+    outputDebug("UWP Application exiting normally\n");
+    outputDebug("=====================================\n");
+    outputDebug("\n");
 
-    // Print any errors that occurred
-    if (uwp_app.error_handler.error_history.items.len > 0) {
-        uwp_app.error_handler.printErrorHistory();
-    }
+    return 0;
+}
+
+/// Export as CRT startup function
+/// این تابع entry point واقعی است که Windows loader صدا می‌زند
+pub export fn wWinMainCRTStartup() callconv(.C) noreturn {
+    outputDebug("wWinMainCRTStartup CALLED by Windows loader\n");
+
+    // Use global extern declarations for Windows APIs
+    const hInstance = GetModuleHandleW(null);
+    const pCmdLine = GetCommandLineW();
+
+    // اگر hInstance null بود، از undefined استفاده می‌کنیم (نباید اتفاق بیفتد)
+    const result = wWinMain(
+        hInstance orelse undefined,
+        null,
+        pCmdLine,
+        SW_SHOW,
+    );
+
+    var buf: [128]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, "Exiting with code: {}\n", .{result}) catch "Exiting\n";
+    outputDebug(msg);
+
+    ExitProcess(@intCast(result));
+}
+
+// برای سازگاری، اگر کسی به اشتباه با zig build run اجرا کند
+pub fn main() !void {
+    std.debug.print("\n", .{});
+    std.debug.print("⚠️  WARNING: This is a UWP application!\n", .{});
+    std.debug.print("⚠️  It cannot be run directly from command line.\n", .{});
+    std.debug.print("\n", .{});
+    std.debug.print("To run this application:\n", .{});
+    std.debug.print("  1. Build and package: zig build all-appx\n", .{});
+    std.debug.print("  2. Find it in Start Menu: 'ZigUWP'\n", .{});
+    std.debug.print("  3. Or use: explorer.exe shell:AppsFolder\\...\n", .{});
+    std.debug.print("\n", .{});
+    std.debug.print("For debugging:\n", .{});
+    std.debug.print("  1. Download DebugView from Microsoft Sysinternals\n", .{});
+    std.debug.print("  2. Run DebugView as Administrator\n", .{});
+    std.debug.print("  3. Enable: Capture > Capture Global Win32\n", .{});
+    std.debug.print("  4. Launch the UWP app from Start Menu\n", .{});
+    std.debug.print("  5. Watch logs in DebugView\n", .{});
+    std.debug.print("\n", .{});
+
+    return error.UWPAppCannotRunDirectly;
 }

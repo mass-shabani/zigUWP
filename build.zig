@@ -1,4 +1,3 @@
-//build.zig
 const std = @import("std");
 const appx = @import("build-appx.zig");
 
@@ -6,14 +5,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // *** Build steps
-    // Main UWP executable with modular architecture
+    // *** Build UWP Application با تنظیمات صحیح
     const exe = b.addExecutable(.{
         .name = "zigUWP",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .win32_manifest = null, // No manifest embedding for UWP
     });
+
+    // CRITICAL: تنظیمات UWP - این خط فوق‌العاده مهم است!
+    // UWP apps باید با subsystem WINDOWS کامپایل شوند نه CONSOLE
+    exe.subsystem = .Windows;
+
+    // Disable stack protection for better UWP compatibility
+    // exe.stack_protector = false;
 
     // Add library search path
     exe.addLibraryPath(b.path("Libs"));
@@ -45,6 +51,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    // تست‌ها می‌توانند Console باشند
+    module_test_exe.subsystem = .Console;
 
     module_test_exe.addLibraryPath(b.path("Libs"));
     module_test_exe.linkSystemLibrary("ole32");
@@ -107,11 +116,20 @@ pub fn build(b: *std.Build) void {
     // *** Help step
     const help_step = b.step("help", "Show available build commands");
 
-    // Simple help step using system command
     const help_cmd = b.addSystemCommand(&.{
         "PowerShell",
         "-Command",
-        "Write-Host 'Available commands:'; Write-Host '  zig build run           - Run the main UWP application'; Write-Host '  zig build test-modules  - Test individual modules'; Write-Host '  zig build test          - Run unit tests'; Write-Host '  zig build docs          - Generate documentation'; Write-Host '  zig build package       - Create UWP package (appx)'; Write-Host '  zig build sign-appx     - Sign UWP package'; Write-Host '  zig build install-appx  - Install UWP package'; Write-Host '  zig build all-appx      - Build, package, sign and install UWP application'; Write-Host '  zig build clean         - Clean build artifacts'; Write-Host '  zig build clean-all     - Clean build artifacts and packages'; Write-Host '  zig build help          - Show this help'",
+        \\Write-Host 'Available commands:' -ForegroundColor Cyan
+        \\Write-Host '  zig build run           - Run the main UWP application'
+        \\Write-Host '  zig build test-modules  - Test individual modules'
+        \\Write-Host '  zig build test          - Run unit tests'
+        \\Write-Host '  zig build docs          - Generate documentation'
+        \\Write-Host '  zig build package       - Create UWP package (appx)'
+        \\Write-Host '  zig build sign-appx     - Sign UWP package'
+        \\Write-Host '  zig build install-appx  - Install UWP package'
+        \\Write-Host '  zig build all-appx      - Build, package, sign and install UWP'
+        \\Write-Host '  zig build clean         - Clean build artifacts'
+        \\Write-Host '  zig build help          - Show this help'
     });
     help_step.dependOn(&help_cmd.step);
 }
