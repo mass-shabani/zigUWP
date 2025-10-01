@@ -24,6 +24,19 @@ if (-not $SignToolPath) {
 # Add SignTool to PATH
 $env:PATH += ';' + $SignToolPath
 
+# Try to find SignTool in different locations
+$signToolExe = $null
+if (Get-Command 'SignTool' -ErrorAction SilentlyContinue) {
+    $signToolExe = 'SignTool'
+}
+elseif (Test-Path ($SignToolPath + '\SignTool.exe')) {
+    $signToolExe = $SignToolPath + '\SignTool.exe'
+}
+else {
+    Write-Host 'SignTool not found in expected locations'
+    exit 1
+}
+
 # Function to create self-signed certificate
 function Create-SelfSignedCertificate {
     param(
@@ -34,7 +47,7 @@ function Create-SelfSignedCertificate {
     
     Write-Host 'Creating self-signed certificate...'
     try {
-        $cert = New-SelfSignedCertificate -Subject $Subject -CertStoreLocation Cert:\LocalMachine\My -KeySpec KeyExchange -KeyUsage DigitalSignature -KeyUsage KeyEncipherment -NotAfter (Get-Date).AddYears(1)
+        $cert = New-SelfSignedCertificate -Subject $Subject -CertStoreLocation Cert:\CurrentUser\My -DnsName $Subject -KeySpec Signature -KeyUsage DigitalSignature -NotAfter (Get-Date).AddYears(1)
         $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
         Export-PfxCertificate -Cert $cert -FilePath $FilePath -Password $securePassword
         Write-Host 'Self-signed certificate created successfully at:' $FilePath
@@ -50,24 +63,42 @@ function Create-SelfSignedCertificate {
 $cert = $null
 $usePfx = $false
 
-# First, try to use PFX file if it exists
 if (Test-Path $CertFilePath) {
-    Write-Host 'Found existing PFX certificate at:' $CertFilePath
-    $usePfx = $true
-}
-else {
-    # Try to find certificate in My store by subject
-    $cert = Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue | Where-Object { $_.Subject -like "*$CertSubject*" }
-    if ($cert) {
-        Write-Host 'Found certificate in My store with subject:' $CertSubject
+    Write-Host 'Existing PFX certificate found, importing...'
+    $securePassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
+    try {
+        $cert = Import-PfxCertificate -FilePath $CertFilePath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword
+        Write-Host 'Certificate imported successfully'
+        $usePfx = $true
     }
-    else {
-        Write-Host 'No certificate found in My store with subject:' $CertSubject
-        Write-Host 'Attempting to create self-signed certificate...'
-        $cert = Create-SelfSignedCertificate -Subject $CertSubject -Password $CertPassword -FilePath $CertFilePath
-        if ($cert) {
+    catch {
+        Write-Host 'Failed to import existing certificate:' $_.Exception.Message
+        Write-Host 'Creating new self-signed certificate...'
+        Remove-Item $CertFilePath -Force -ErrorAction SilentlyContinue
+        try {
+            $cert = New-SelfSignedCertificate -Subject $PublisherName -CertStoreLocation Cert:\CurrentUser\My -Type CodeSigningCert -NotAfter (Get-Date).AddYears(1)
+            $securePassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
+            Export-PfxCertificate -Cert $cert -FilePath $CertFilePath -Password $securePassword
+            Write-Host 'Self-signed certificate created successfully at:' $CertFilePath
             $usePfx = $true
         }
+        catch {
+            Write-Host 'Failed to create self-signed certificate:' $_.Exception.Message
+            $usePfx = $false
+        }
+    }
+} else {
+    Write-Host 'Creating new self-signed certificate...'
+    try {
+        $cert = New-SelfSignedCertificate -Subject $PublisherName -CertStoreLocation Cert:\CurrentUser\My -Type CodeSigningCert -NotAfter (Get-Date).AddYears(1)
+        $securePassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
+        Export-PfxCertificate -Cert $cert -FilePath $CertFilePath -Password $securePassword
+        Write-Host 'Self-signed certificate created successfully at:' $CertFilePath
+        $usePfx = $true
+    }
+    catch {
+        Write-Host 'Failed to create self-signed certificate:' $_.Exception.Message
+        $usePfx = $false
     }
 }
 
@@ -77,12 +108,28 @@ if (Get-Command 'SignTool' -ErrorAction SilentlyContinue) {
         Write-Host 'Attempting to sign package...'
         
         if ($usePfx -and (Test-Path $CertFilePath)) {
-            Write-Host 'Signing package with PFX certificate...'
-            SignTool sign /f $CertFilePath /p $CertPassword /fd SHA256 /td SHA256 /tr 'http://timestamp.digicert.com' $PackagePath
+            Write-Host 'Signing package with certificate from store...'
+            Write-Host 'Certificate details:'
+            $cert | Format-List
+            Write-Host 'Attempting to sign with debug info...'
+            & $signToolExe sign /s My /sha1 $cert.Thumbprint /fd sha256 /td sha256 /tr 'http://timestamp.digicert.com' /debug $PackagePath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                Write-Host 'Trying without timestamp...'
+                & $signToolExe sign /s My /sha1 $cert.Thumbprint /fd sha256 /debug $PackagePath
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                    exit 1
+                }
+            }
         }
         elseif ($cert) {
             Write-Host 'Signing package with certificate from store...'
-            SignTool sign /s 'LocalMachine\My' /n $cert.Subject /fd SHA256 /td SHA256 /tr 'http://timestamp.digicert.com' $PackagePath
+            & SignTool sign /s My /sha1 $cert.Thumbprint /fd sha256 $PackagePath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                exit 1
+            }
         }
         else {
             Write-Host 'No certificate available for signing'
@@ -97,9 +144,9 @@ if (Get-Command 'SignTool' -ErrorAction SilentlyContinue) {
         
         # Show certificate information for debugging
         Write-Host '=== Certificate Information ==='
-        if (Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue) {
+        if (Get-ChildItem -Path Cert:\CurrentUser\My -ErrorAction SilentlyContinue) {
             Write-Host 'Certificates in My store:'
-            Get-ChildItem -Path Cert:\LocalMachine\My | Select-Object Subject, Thumbprint, NotAfter | Format-Table -AutoSize
+            Get-ChildItem -Path Cert:\CurrentUser\My | Select-Object Subject, Thumbprint, NotAfter | Format-Table -AutoSize
         } else {
             Write-Host 'No certificates found in My store'
         }
@@ -119,11 +166,24 @@ else {
             
             if ($usePfx -and (Test-Path $CertFilePath)) {
                 Write-Host 'Signing package with PFX certificate...'
-                & ($SignToolPath + '\SignTool.exe') sign /f $CertFilePath /p $CertPassword /fd SHA256 /td SHA256 /tr 'http://timestamp.digicert.com' $PackagePath
+                & $signToolExe sign /f $CertFilePath /p $CertPassword /fd sha256 /td sha256 /tr 'http://timestamp.digicert.com' $PackagePath
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                    Write-Host 'Trying without timestamp...'
+                    & $signToolExe sign /f $CertFilePath /p $CertPassword /fd sha256 $PackagePath
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                        exit 1
+                    }
+                }
             }
             elseif ($cert) {
                 Write-Host 'Signing package with certificate from store...'
-                & ($SignToolPath + '\SignTool.exe') sign /s 'LocalMachine\My' /n $cert.Subject /fd SHA256 /td SHA256 /tr 'http://timestamp.digicert.com' $PackagePath
+                & ($SignToolPath + '\SignTool.exe') sign /s My /sha1 $cert.Thumbprint /fd sha256 $PackagePath
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+                    exit 1
+                }
             }
             else {
                 Write-Host 'No certificate available for signing'
@@ -138,9 +198,9 @@ else {
             
             # Show certificate information for debugging
             Write-Host '=== Certificate Information ==='
-            if (Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue) {
+            if (Get-ChildItem -Path Cert:\CurrentUser\My -ErrorAction SilentlyContinue) {
                 Write-Host 'Certificates in My store:'
-                Get-ChildItem -Path Cert:\LocalMachine\My | Select-Object Subject, Thumbprint, NotAfter | Format-Table -AutoSize
+                Get-ChildItem -Path Cert:\CurrentUser\My | Select-Object Subject, Thumbprint, NotAfter | Format-Table -AutoSize
             } else {
                 Write-Host 'No certificates found in My store'
             }

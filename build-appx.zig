@@ -197,7 +197,7 @@ fn createAppxPackage(b: *std.Build) *std.Build.Step.Run {
             \\    }}
             \\    
             \\    Write-Host '[INFO] Creating APPX package...'
-            \\    & $makeAppx pack /d '{s}' /p '{s}' /l
+            \\    & $makeAppx pack /d '{s}' /p '{s}' /l /o
             \\    
             \\    if ($LASTEXITCODE -ne 0) {{
             \\        throw "MakeAppx failed with exit code: $LASTEXITCODE"
@@ -224,12 +224,12 @@ fn signAppxPackage(b: *std.Build) *std.Build.Step.Run {
         Paths.appxOutput(b),
         "-CertFilePath",
         Paths.certFile(b),
-        "-PublisherName",
-        Config.publisher,
-        "-CertPassword",
-        Config.cert_password,
         "-CertSubject",
         Config.cert_subject,
+        "-CertPassword",
+        Config.cert_password,
+        "-PublisherName",
+        Config.publisher,
     });
 }
 
@@ -255,13 +255,9 @@ fn installAppxPackage(b: *std.Build) *std.Build.Step.Run {
             \\        Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion
             \\        Write-Host '[OK] Package installed successfully'
             \\    }} catch {{
-            \\        if ($skipSigning) {{
-            \\            Write-Host '[INFO] Trying development mode installation...'
-            \\            Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion -DevelopmentMode
-            \\            Write-Host '[OK] Package installed in development mode'
-            \\        }} else {{
-            \\            throw
-            \\        }}
+            \\        Write-Host '[INFO] Trying development mode installation...'
+            \\        Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion -DevelopmentMode
+            \\        Write-Host '[OK] Package installed in development mode'
             \\    }}
             \\}} catch {{
             \\    Write-Error "Failed to install package: $_"
