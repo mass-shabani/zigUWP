@@ -62,7 +62,6 @@ Desktop.ini
 # -------------------------
 # Build / distribution folders
 # -------------------------
-build/
 dist/
 out/
 release/

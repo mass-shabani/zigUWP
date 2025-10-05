@@ -112,7 +112,7 @@ $blacklistFiles = @(
 # Main Script
 $ErrorActionPreference = "SilentlyContinue"
 $outputFile = "treemap.txt"
-$rootPath = Get-Location
+$rootPath = Split-Path (Get-Location) -Parent
 
 # Clear previous output file
 if (Test-Path $outputFile) {

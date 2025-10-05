@@ -13,6 +13,7 @@ const Config = struct {
     const publisher = "CN=Massoud, O=Massoud, C=IR";
     const cert_password = "zigUWP123!";
     const cert_subject = "zigUWP Self-Signed Certificate";
+    const cert_dir = "zig-out/sign";
     const cert_filename = "zigUWP.pfx";
 
     // Timestamp Server
@@ -26,8 +27,8 @@ const Config = struct {
 
     // Source Paths
     const manifest_source = "AppxManifest.xml";
-    const assets_source = "assets/images";
-    const libs_source = "Libs";
+    const assets_source = "../assets/images";
+    const libs_source = "../Libs";
 
     // Package Structure
     const assets_dest = "assets";
@@ -56,7 +57,7 @@ const Paths = struct {
     }
 
     fn certFile(b: *std.Build) []const u8 {
-        return b.pathJoin(&.{ Config.bin_dir, Config.cert_filename });
+        return b.pathJoin(&.{ Config.cert_dir, Config.cert_filename });
     }
 };
 

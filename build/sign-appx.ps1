@@ -6,7 +6,7 @@ param(
     [string]$PublisherName = "CN=Massoud, O=Massoud, C=IR",
     [string]$CertPassword = "zigUWP123!",
     [string]$CertSubject = "zigUWP Self-Signed Certificate",
-    [string]$CertFilePath = "zig-out/bin/zigUWP.pfx"
+    [string]$CertFilePath = "zig-out/sign/zigUWP.pfx"
 )
 
 # Check if SKIP_SIGNING environment variable is set
@@ -49,6 +49,8 @@ function Create-SelfSignedCertificate {
     try {
         $cert = New-SelfSignedCertificate -Subject $Subject -CertStoreLocation Cert:\CurrentUser\My -DnsName $Subject -KeySpec Signature -KeyUsage DigitalSignature -NotAfter (Get-Date).AddYears(1)
         $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+        $certDir = Split-Path $FilePath -Parent
+        New-Item -ItemType Directory -Path $certDir -Force
         Export-PfxCertificate -Cert $cert -FilePath $FilePath -Password $securePassword
         Write-Host 'Self-signed certificate created successfully at:' $FilePath
         return $cert
@@ -78,6 +80,8 @@ if (Test-Path $CertFilePath) {
         try {
             $cert = New-SelfSignedCertificate -Subject $PublisherName -CertStoreLocation Cert:\CurrentUser\My -Type CodeSigningCert -NotAfter (Get-Date).AddYears(1)
             $securePassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
+            $certDir = Split-Path $CertFilePath -Parent
+            New-Item -ItemType Directory -Path $certDir -Force
             Export-PfxCertificate -Cert $cert -FilePath $CertFilePath -Password $securePassword
             Write-Host 'Self-signed certificate created successfully at:' $CertFilePath
             $usePfx = $true
@@ -92,6 +96,8 @@ if (Test-Path $CertFilePath) {
     try {
         $cert = New-SelfSignedCertificate -Subject $PublisherName -CertStoreLocation Cert:\CurrentUser\My -Type CodeSigningCert -NotAfter (Get-Date).AddYears(1)
         $securePassword = ConvertTo-SecureString $CertPassword -AsPlainText -Force
+        $certDir = Split-Path $CertFilePath -Parent
+        New-Item -ItemType Directory -Path $certDir -Force
         Export-PfxCertificate -Cert $cert -FilePath $CertFilePath -Password $securePassword
         Write-Host 'Self-signed certificate created successfully at:' $CertFilePath
         $usePfx = $true

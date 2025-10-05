@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
     // *** Build UWP Application با تنظیمات صحیح
     const exe = b.addExecutable(.{
         .name = "zigUWP",
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("../src/main.zig"),
         .target = target,
         .optimize = optimize,
         .win32_manifest = null, // No manifest embedding for UWP
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     // exe.stack_protector = false;
 
     // Add library search path
-    exe.addLibraryPath(b.path("Libs"));
+    exe.addLibraryPath(b.path("../Libs"));
 
     // Link required Windows libraries for UWP
     exe.linkSystemLibrary("ole32"); // COM support
@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) void {
     // *** Module testing executable
     const module_test_exe = b.addExecutable(.{
         .name = "module_test",
-        .root_source_file = b.path("src/test_modules.zig"),
+        .root_source_file = b.path("../src/test_modules.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -55,7 +55,7 @@ pub fn build(b: *std.Build) void {
     // تست‌ها می‌توانند Console باشند
     module_test_exe.subsystem = .Console;
 
-    module_test_exe.addLibraryPath(b.path("Libs"));
+    module_test_exe.addLibraryPath(b.path("../Libs"));
     module_test_exe.linkSystemLibrary("ole32");
     module_test_exe.linkSystemLibrary("WindowsApp");
     module_test_exe.linkSystemLibrary("runtimeobject");
@@ -78,12 +78,12 @@ pub fn build(b: *std.Build) void {
 
     // *** Unit tests for the modules
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("../src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    unit_tests.addLibraryPath(b.path("Libs"));
+    unit_tests.addLibraryPath(b.path("../Libs"));
     unit_tests.linkSystemLibrary("ole32");
     unit_tests.linkSystemLibrary("WindowsApp");
     unit_tests.linkSystemLibrary("runtimeobject");
@@ -101,7 +101,7 @@ pub fn build(b: *std.Build) void {
     const doc_step = b.step("docs", "Generate documentation");
     const doc_obj = b.addObject(.{
         .name = "zigUWP-docs",
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("../src/main.zig"),
         .target = target,
         .optimize = .Debug,
     });

@@ -223,6 +223,7 @@ pub fn main() !void {
     std.debug.print("  4. Launch the UWP app from Start Menu\n", .{});
     std.debug.print("  5. Watch logs in DebugView\n", .{});
     std.debug.print("\n", .{});
+    outputDebug("⚠️WARNING: zigUWP, This is a UWP application.");
 
     return error.UWPAppCannotRunDirectly;
 }

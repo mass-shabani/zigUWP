@@ -25,7 +25,7 @@ $passed = 0
 
 Write-Host "[1] Checking main.zig..." -ForegroundColor Yellow
 
-$mainZigPath = "src\main.zig"
+$mainZigPath = "..\src\main.zig"
 
 if (-not (Test-Path $mainZigPath)) {
     $errors += "main.zig not found at: $mainZigPath"
@@ -179,7 +179,7 @@ if (-not (Test-Path $manifestPath)) {
         Write-Host "`n  Checking Assets:" -ForegroundColor Cyan
         foreach ($asset in $requiredAssets) {
             if ($asset.Path) {
-                $assetPath = $asset.Path
+                $assetPath = ".." + $asset.Path
                 if (Test-Path $assetPath) {
                     Write-Host "    ✓ $($asset.Name): $assetPath" -ForegroundColor Green
                     $passed++
@@ -203,7 +203,7 @@ Write-Host ""
 
 Write-Host "[4] Checking project structure..." -ForegroundColor Yellow
 
-$requiredDirs = @('src', 'src/core', 'src/interfaces', 'src/implementation', 'src/utils', 'assets/images', 'Libs')
+$requiredDirs = @('..\src', '..\src\core', '..\src\interfaces', '..\src\implementation', '..\src\utils', '..\assets\images', '..\Libs')
 
 foreach ($dir in $requiredDirs) {
     if (Test-Path $dir) {
