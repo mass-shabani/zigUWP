@@ -31,7 +31,7 @@
     <Application
       Id="App"
       Executable="zigUWP.exe"
-      EntryPoint="Windows.FullTrustApplication">
+      EntryPoint="zigUWP.exe">
 
       <uap:VisualElements
         DisplayName="ZigUWP"

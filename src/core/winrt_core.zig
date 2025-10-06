@@ -10,9 +10,10 @@ pub const LPCWSTR = windows.LPCWSTR;
 // WinRT Constants
 pub const S_OK: HRESULT = 0;
 pub const S_FALSE: HRESULT = 1;
-pub const E_FAIL: u32 = 0x80004005;
-pub const E_NOINTERFACE: u32 = 0x80004002;
-pub const RPC_E_CHANGED_MODE: u32 = 0x80010106;
+pub const E_FAIL: HRESULT = @bitCast(@as(u32, 0x80004005));
+pub const E_NOINTERFACE: HRESULT = @bitCast(@as(u32, 0x80004002));
+pub const E_NOTIMPL: HRESULT = @bitCast(@as(u32, 0x80004001));
+pub const RPC_E_CHANGED_MODE: HRESULT = @bitCast(@as(u32, 0x80010106));
 
 // COM/WinRT Initialization
 pub const COINIT_APARTMENTTHREADED: u32 = 0x2;
@@ -73,6 +74,17 @@ pub extern "windowsapp" fn RoInitialize(initType: u32) callconv(WINAPI) HRESULT;
 
 pub extern "windowsapp" fn RoUninitialize() callconv(WINAPI) void;
 
+pub const RO_REGISTRATION_COOKIE = usize;
+
+pub extern "windowsapp" fn RoRegisterActivationFactories(
+    activatableClassIds: [*]const HSTRING,
+    activationFactoryPointers: [*]*anyopaque,
+    count: u32,
+    cookie: *RO_REGISTRATION_COOKIE,
+) callconv(WINAPI) HRESULT;
+
+pub extern "windowsapp" fn RoRevokeActivationFactories(cookie: RO_REGISTRATION_COOKIE) callconv(WINAPI) void;
+
 // Utility functions for error handling
 pub fn isSuccess(hr: HRESULT) bool {
     return hr >= 0;
@@ -84,9 +96,9 @@ pub fn isFailure(hr: HRESULT) bool {
 
 pub fn hrToError(hr: HRESULT) anyerror {
     return switch (@as(u32, @bitCast(hr))) {
-        E_FAIL => error.GeneralFailure,
-        E_NOINTERFACE => error.NoInterface,
-        RPC_E_CHANGED_MODE => error.ChangedMode,
+        0x80004005 => error.GeneralFailure,
+        0x80004002 => error.NoInterface,
+        0x80010106 => error.ChangedMode,
         else => error.UnknownHRESULT,
     };
 }

@@ -171,3 +171,44 @@ pub const WinRTSystem = struct {
         }
     }
 };
+
+// Registration functions
+pub const ActivationFactoryInfo = struct {
+    class_id: []const u8,
+    factory: *anyopaque,
+};
+
+pub fn registerActivationFactories(
+    allocator: std.mem.Allocator,
+    factories: []const ActivationFactoryInfo,
+) !winrt_core.RO_REGISTRATION_COOKIE {
+    const count = factories.len;
+    const class_ids = try allocator.alloc(winrt_core.HSTRING, count);
+    defer {
+        for (class_ids) |h| hstring.destroy(h);
+        allocator.free(class_ids);
+    }
+
+    const factory_ptrs = try allocator.alloc(*anyopaque, count);
+    defer allocator.free(factory_ptrs);
+
+    for (factories, 0..) |f, i| {
+        class_ids[i] = try hstring.create(f.class_id);
+        factory_ptrs[i] = f.factory;
+    }
+
+    var cookie: winrt_core.RO_REGISTRATION_COOKIE = 0;
+    const hr = winrt_core.RoRegisterActivationFactories(
+        class_ids.ptr,
+        factory_ptrs.ptr,
+        @intCast(count),
+        &cookie,
+    );
+
+    if (winrt_core.isFailure(hr)) return winrt_core.hrToError(hr);
+    return cookie;
+}
+
+pub fn revokeActivationFactories(cookie: winrt_core.RO_REGISTRATION_COOKIE) void {
+    winrt_core.RoRevokeActivationFactories(cookie);
+}
