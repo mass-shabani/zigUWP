@@ -90,16 +90,20 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 Write-Host ""
-Write-Host "[2] Monitoring is active. Launch your UWP app now..." -ForegroundColor Yellow
-Write-Host "[3] Press any key to stop monitoring..." -ForegroundColor Yellow
-Write-Host ""
+Write-Host "[2] Launching zigUWP app..." -ForegroundColor Yellow
+try {
+    Start-Process "shell:AppsFolder\ZigUWP.ModularApp_c02707gh56r1a!App"
+    Write-Host "[✓] App launched successfully" -ForegroundColor Green
+} catch {
+    Write-Host "[!] App not found or not installed. Continuing with trace..." -ForegroundColor Yellow
+}
 
-# منتظر کلید کاربر
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+# Wait for app to run
+Start-Sleep -Seconds 1
 
 # توقف trace
 Write-Host ""
-Write-Host "[4] Stopping ETW Session..." -ForegroundColor Yellow
+Write-Host "[3] Stopping ETW Session..." -ForegroundColor Yellow
 logman stop $traceName -ets
 
 if ($LASTEXITCODE -eq 0) {
