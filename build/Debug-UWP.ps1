@@ -1,16 +1,16 @@
 # build\Debug-UWP.ps1
 #Requires -Version 5.1
-
 <#
 .SYNOPSIS
-    بررسی صحت تنظیمات UWP قبل از build
+    Verifies UWP project configuration before building.
 
 .DESCRIPTION
-    این اسکریپت موارد زیر را چک می‌کند:
-    - main.zig دارای wWinMainCRTStartup است
-    - build.zig دارای exe.subsystem = .Windows است
-    - AppxManifest.xml دارای EntryPoint معتبر است
-    - فایل‌های Asset موجود هستند
+    This script checks:
+    - main.zig has wWinMainCRTStartup export
+    - build.zig has exe.subsystem = .Windows
+    - AppxManifest.xml has valid EntryPoint
+    - Asset files exist
+    Usage: ./Debug-UWP.ps1
 #>
 
 Write-Host "`n=== UWP Setup Verification ===" -ForegroundColor Cyan

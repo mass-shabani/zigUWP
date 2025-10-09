@@ -1,5 +1,15 @@
 # build\sign-appx.ps1
 # PowerShell script for signing UWP packages with improved readability and functionality
+
+<#
+.SYNOPSIS
+    Signs UWP app packages with a code signing certificate.
+
+.DESCRIPTION
+    Creates or uses an existing self-signed certificate to sign .appx packages for development and testing.
+    Usage: ./sign-appx.ps1 [-PackagePath path] [-CertFilePath path] [-CertPassword password]
+#>
+
 param(
     [string]$PackagePath = "zig-out/bin/zigUWP.appx",
     [string]$SignToolPath = "",
@@ -80,76 +90,6 @@ function Get-Certificate {
     return $cert
 }
 
-# Function to ensure certificate is trusted in CurrentUser\Root
-function Ensure-CertificateTrusted {
-    param([object]$Certificate)
-
-    if ($Certificate -is [System.Array]) {
-        $Certificate = $Certificate[0]
-    }
-    $Certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
-
-    $thumbprint = $Certificate.Thumbprint
-
-    # Check if already in CurrentUser\Root
-    $trustedCert = Get-ChildItem -Path Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $thumbprint }
-
-    if (-not $trustedCert) {
-        Write-Host 'Adding certificate to CurrentUser\Root for trust...'
-        try {
-            $Certificate | Export-Certificate -FilePath "temp.cer" -Type CERT
-            Import-Certificate -FilePath "temp.cer" -CertStoreLocation Cert:\CurrentUser\Root
-            Remove-Item "temp.cer"
-            Write-Host '✓ Certificate added to trusted root successfully' -ForegroundColor Green
-        } catch {
-            Write-Host "Failed to add certificate to trusted root: $($_.Exception.Message)" -ForegroundColor Red
-        }
-    } else {
-        Write-Host 'Certificate is already trusted in CurrentUser\Root'
-    }
-}
-
-# Function to list certificates with matching CN and O
-function List-Certificates {
-    param([object]$Certificate)
-
-    if ($Certificate -is [System.Array]) {
-        $Certificate = $Certificate[0]
-    }
-    $Certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
-
-    $signingCN = if ($Certificate.Subject -match 'CN=([^,]+)') { $matches[1] } else { '' }
-    $signingO = if ($Certificate.Subject -match 'O=([^,]+)') { $matches[1] } else { '' }
-
-    Write-Host "Listing certificates with CN='$signingCN' and O='$signingO':"
-    Write-Host "Store           | Subject                         | Thumbprint"
-    Write-Host "----------------|---------------------------------|--------------------------------"
-
-    $allCerts = Get-ChildItem -Path Cert:\ -Recurse | Select-Object `
-        @{Name="CN";Expression={try { if ($_.Subject -and $_.Subject -match 'CN=([^,]+)') { $matches[1] } else { '' } } catch { '' }}}, `
-        @{Name="O";Expression={try { if ($_.Subject -and $_.Subject -match 'O=([^,]+)') { $matches[1] } else { '' } } catch { '' }}}, `
-        @{Name="Store";Expression={try { $_.PSParentPath -replace '.*Certificate::', '' } catch { '' }}}, `
-        Subject, Thumbprint
-
-    $filteredCerts = $allCerts | Where-Object { $_.CN -eq $signingCN -and $_.O -eq $signingO }
-
-    foreach ($certItem in $filteredCerts) {
-        $store = if ($certItem.Store) { $certItem.Store.PadRight(16).Substring(0,16) } else { ''.PadRight(16).Substring(0,16) }
-        $subject = if ($certItem.Subject) { $certItem.Subject.PadRight(32).Substring(0,32) } else { ''.PadRight(32).Substring(0,32) }
-        $thumb = if ($certItem.Thumbprint) { $certItem.Thumbprint } else { '' }
-
-        if ($certItem.Thumbprint -and $certItem.Thumbprint -eq $Certificate.Thumbprint) {
-            Write-Host "$store| $subject| $thumb" -ForegroundColor Green
-        } else {
-            Write-Host "$store| $subject| $thumb"
-        }
-    }
-
-    $count = $filteredCerts.Count
-    Write-Host "Certificates found in system: $count"
-    Write-Host ""
-}
-
 # Function to sign the package
 function Sign-Package {
     param(
@@ -170,16 +110,17 @@ function Sign-Package {
     # Try signing with timestamp first
     & $SignToolExe sign /s My /sha1 $Certificate.Thumbprint /fd sha256 /td sha256 /tr 'http://timestamp.digicert.com' $PackagePath 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "SignTool failed with timestamp, trying without..."
+        Write-Host "SignTool failed with timestamp, trying without..." -ForegroundColor red
         & $SignToolExe sign /s My /sha1 $Certificate.Thumbprint /fd sha256 $PackagePath 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "SignTool failed with exit code: $LASTEXITCODE"
+            Write-Host "SignTool failed with exit code: $LASTEXITCODE" -ForegroundColor red
             exit 1
         }
     }
 
-    $fullPath = Resolve-Path $PackagePath
-    Write-Host "✓ Successfully signed: $fullPath" -ForegroundColor Green
+    $fullPath = $PackagePath
+    Write-Host "[OK] Successfully signed: $fullPath" -ForegroundColor Green
+     Write-Host ""
 }
 
 # Main script logic
@@ -199,11 +140,5 @@ $cert = Get-Certificate -PublisherName $PublisherName -CertPassword $CertPasswor
 
 # Sign the package
 Sign-Package -PackagePath $PackagePath -SignToolExe $signToolExe -Certificate $cert
-
-# Ensure certificate is trusted
-Ensure-CertificateTrusted -Certificate $cert
-
-# List certificates
-List-Certificates -Certificate $cert
 
 exit 0

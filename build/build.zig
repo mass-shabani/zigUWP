@@ -97,11 +97,11 @@ pub fn build(b: *std.Build) void {
         \\Write-Host '║    zig build all-appx     - Build + Sign + Install ║' -ForegroundColor White
         \\Write-Host '║                                                    ║' -ForegroundColor White
         \\Write-Host '║  Testing:                                          ║' -ForegroundColor White
-        \\Write-Host '║    zig build test-logger  - Test logger           ║' -ForegroundColor White
+        \\Write-Host '║    zig build test-logger  - Test logger            ║' -ForegroundColor White
         \\Write-Host '║                                                    ║' -ForegroundColor White
         \\Write-Host '║  Maintenance:                                      ║' -ForegroundColor White
-        \\Write-Host '║    zig build clean        - Clean build artifacts ║' -ForegroundColor White
-        \\Write-Host '║    zig build help         - Show this help        ║' -ForegroundColor White
+        \\Write-Host '║    zig build clean        - Clean build artifacts  ║' -ForegroundColor White
+        \\Write-Host '║    zig build help         - Show this help         ║' -ForegroundColor White
         \\Write-Host '║                                                    ║' -ForegroundColor White
         \\Write-Host '╚════════════════════════════════════════════════════╝' -ForegroundColor Cyan
         \\Write-Host ''

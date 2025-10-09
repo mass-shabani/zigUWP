@@ -1,3 +1,12 @@
+<#
+.SYNOPSIS
+    Installs the built UWP app package for development.
+
+.DESCRIPTION
+    Registers the UWP app package using Add-AppxPackage for testing during development.
+    Usage: ./install-appx.ps1
+#>
+
 try {
     $manifestPath = "zig-out\bin\package\AppxManifest.xml"
 

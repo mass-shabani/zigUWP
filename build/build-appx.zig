@@ -145,38 +145,21 @@ fn updateManifest(b: *std.Build, manifest_path: []const u8) *std.Build.Step.Run 
     });
 }
 
-/// Creates APPX package using MakeAppx
+/// Creates APPX package using external script
 fn createAppxPackage(b: *std.Build) *std.Build.Step.Run {
     const package_dir = Paths.packageDir(b);
     const output_path = Paths.appxOutput(b);
 
     return b.addSystemCommand(&.{
         "PowerShell",
-        "-Command",
-        b.fmt(
-            \\try {{
-            \\    $sdkPath = $env:MAKEAPPX_PATH
-            \\    if (-not $sdkPath) {{ $sdkPath = '{s}' }}
-            \\    
-            \\    $makeAppx = Join-Path $sdkPath 'MakeAppx.exe'
-            \\    
-            \\    if (-not (Test-Path $makeAppx)) {{
-            \\        throw "MakeAppx.exe not found at: $makeAppx"
-            \\    }}
-            \\    
-            \\    Write-Host '[INFO] Creating APPX package...'
-            \\    & $makeAppx pack /d '{s}' /p '{s}' /l /o
-            \\    
-            \\    if ($LASTEXITCODE -ne 0) {{
-            \\        throw "MakeAppx failed with exit code: $LASTEXITCODE"
-            \\    }}
-            \\    
-            \\    Write-Host '[OK] Package created successfully'
-            \\}} catch {{
-            \\    Write-Error "Failed to create package: $_"
-            \\    exit 1
-            \\}}
-        , .{ Config.sdk_base, package_dir, output_path }),
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "create-appx.ps1",
+        "-PackageDir",
+        package_dir,
+        "-OutputPath",
+        output_path,
     });
 }
 
