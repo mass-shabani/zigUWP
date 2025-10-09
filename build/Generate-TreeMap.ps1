@@ -1,3 +1,4 @@
+# build\Generate-TreeMap.ps1
 <#
 .SYNOPSIS
     Generates a clean directory structure map using recursive filtering

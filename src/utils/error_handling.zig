@@ -1,3 +1,4 @@
+// src\utils\error_handling.zig
 const std = @import("std");
 const winrt_core = @import("../core/winrt_core.zig");
 
@@ -158,3 +159,5 @@ pub fn checkHResult(hr: HRESULT, operation: []const u8, component: []const u8, e
         return error_handler.handleError(error_context);
     }
 }
+
+

@@ -1,3 +1,4 @@
+# debug\traceETW.ps1
 # ==============================================================
 # ETW Session برای نظارت بر برنامه‌های UWP/AppContainer
 # نیاز به اجرا با Administrator privileges

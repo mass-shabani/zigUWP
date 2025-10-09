@@ -1,236 +1,241 @@
-// src/implementation/application.zig
+// src/interfaces/application.zig
+// Windows.ApplicationModel.Core interfaces
+// ICoreApplication and ICoreApplicationView
+
 const std = @import("std");
-const winrt_core = @import("../core/winrt_core.zig");
-const activation = @import("../core/activation.zig");
-const uwp_application = @import("../core/uwp_application.zig");
-const com_base = @import("../core/com_base.zig");
-const hstring = @import("../utils/hstring.zig");
-const logger = @import("../utils/debug_logger.zig");
+const winrt = @import("../core/winrt_core.zig");
+const com = @import("../core/com_base.zig");
+const view = @import("view.zig");
+const window = @import("window.zig");
 
-const WINAPI = winrt_core.WINAPI;
-const HRESULT = winrt_core.HRESULT;
-const GUID = winrt_core.GUID;
-const HSTRING = winrt_core.HSTRING;
-const TrustLevel = winrt_core.TrustLevel;
+// ============================================================================
+// Interface IDs
+// ============================================================================
 
-// IApplication interface (simplified)
-pub const IApplication = extern struct {
-    vtbl: *const IApplicationVtbl,
+// ICoreApplication: {0AACF7A4-5E1D-49DF-8034-FB6A68BC5ED1}
+pub const IID_ICoreApplication = winrt.GUID{
+    .Data1 = 0x0AACF7A4,
+    .Data2 = 0x5E1D,
+    .Data3 = 0x49DF,
+    .Data4 = .{ 0x80, 0x34, 0xFB, 0x6A, 0x68, 0xBC, 0x5E, 0xD1 },
+};
 
-    pub const IApplicationVtbl = extern struct {
-        // IInspectable methods
-        QueryInterface: *const fn (*IApplication, *const GUID, *?*anyopaque) callconv(WINAPI) HRESULT,
-        AddRef: *const fn (*IApplication) callconv(WINAPI) u32,
-        Release: *const fn (*IApplication) callconv(WINAPI) u32,
-        GetIids: *const fn (*IApplication, *u32, *?**GUID) callconv(WINAPI) HRESULT,
-        GetRuntimeClassName: *const fn (*IApplication, *HSTRING) callconv(WINAPI) HRESULT,
-        GetTrustLevel: *const fn (*IApplication, *TrustLevel) callconv(WINAPI) HRESULT,
+// ICoreApplicationView: {638BB2DB-451D-4661-B099-414F34FFB9F1}
+pub const IID_ICoreApplicationView = winrt.GUID{
+    .Data1 = 0x638BB2DB,
+    .Data2 = 0x451D,
+    .Data3 = 0x4661,
+    .Data4 = .{ 0xB0, 0x99, 0x41, 0x4F, 0x34, 0xFF, 0xB9, 0xF1 },
+};
 
-        // IApplication methods
-        OnLaunched: *const fn (*IApplication, *anyopaque) callconv(WINAPI) void,
+// ============================================================================
+// ICoreApplication
+// ============================================================================
+
+pub const ICoreApplication = extern struct {
+    vtbl: *const VTable,
+
+    pub const VTable = extern struct {
+        // IInspectable
+        QueryInterface: *const fn (
+            *ICoreApplication,
+            *const winrt.GUID,
+            *?*anyopaque,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        AddRef: *const fn (
+            *ICoreApplication,
+        ) callconv(winrt.WINAPI) u32,
+
+        Release: *const fn (
+            *ICoreApplication,
+        ) callconv(winrt.WINAPI) u32,
+
+        GetIids: *const fn (
+            *ICoreApplication,
+            *u32,
+            *?[*]winrt.GUID,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        GetRuntimeClassName: *const fn (
+            *ICoreApplication,
+            *winrt.HSTRING,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        GetTrustLevel: *const fn (
+            *ICoreApplication,
+            *winrt.TrustLevel,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        // ICoreApplication methods
+        get_Id: *const fn (
+            *ICoreApplication,
+            *winrt.HSTRING,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        add_Suspending: *const fn (
+            *ICoreApplication,
+            ?*anyopaque,
+            *winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        remove_Suspending: *const fn (
+            *ICoreApplication,
+            winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        add_Resuming: *const fn (
+            *ICoreApplication,
+            ?*anyopaque,
+            *winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        remove_Resuming: *const fn (
+            *ICoreApplication,
+            winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        get_Properties: *const fn (
+            *ICoreApplication,
+            *?*anyopaque,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        GetCurrentView: *const fn (
+            *ICoreApplication,
+            *?*ICoreApplicationView,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        Run: *const fn (
+            *ICoreApplication,
+            *view.IFrameworkViewSource,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        RunWithActivationFactories: *const fn (
+            *ICoreApplication,
+            ?*anyopaque,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
     };
-};
 
-// Application implementation
-pub const UWPApplicationImpl = struct {
-    ref_count: u32,
-    allocator: std.mem.Allocator,
-
-    pub fn create(allocator: std.mem.Allocator) !*IApplication {
-        const app = try allocator.create(UWPApplicationImpl);
-        app.* = UWPApplicationImpl{
-            .ref_count = 1,
-            .allocator = allocator,
-        };
-
-        const app_interface = try allocator.create(IApplication);
-        app_interface.* = IApplication{
-            .vtbl = &vtbl,
-        };
-
-        // Store the implementation in the interface (hack for simplicity)
-        // In real COM, this would be different
-        @as(*?*anyopaque, @ptrCast(app_interface)).* = app;
-
-        return app_interface;
+    // Helper methods
+    pub inline fn queryInterface(
+        self: *ICoreApplication,
+        riid: *const winrt.GUID,
+        ppv: *?*anyopaque,
+    ) winrt.HRESULT {
+        return self.vtbl.QueryInterface(self, riid, ppv);
     }
 
-    fn queryInterface(self: *IApplication, riid: *const GUID, ppvObject: *?*anyopaque) callconv(WINAPI) HRESULT {
-        if (std.mem.eql(u8, std.mem.asBytes(riid), std.mem.asBytes(&com_base.IID_IUnknown)) or
-            std.mem.eql(u8, std.mem.asBytes(riid), std.mem.asBytes(&com_base.IID_IInspectable)))
-        {
-            _ = self.vtbl.AddRef(self);
-            ppvObject.* = self;
-            return winrt_core.S_OK;
-        }
-        ppvObject.* = null;
-        return winrt_core.E_NOINTERFACE;
+    pub inline fn addRef(self: *ICoreApplication) u32 {
+        return self.vtbl.AddRef(self);
     }
 
-    fn addRef(self: *IApplication) callconv(WINAPI) u32 {
-        const impl = @as(*UWPApplicationImpl, @alignCast(@ptrCast(@as(*?*anyopaque, @ptrCast(self)).*)));
-        impl.ref_count += 1;
-        return impl.ref_count;
+    pub inline fn release(self: *ICoreApplication) u32 {
+        return self.vtbl.Release(self);
     }
 
-    fn release(self: *IApplication) callconv(WINAPI) u32 {
-        const impl = @as(*UWPApplicationImpl, @alignCast(@ptrCast(@as(*?*anyopaque, @ptrCast(self)).*)));
-        impl.ref_count -= 1;
-        if (impl.ref_count == 0) {
-            impl.allocator.destroy(impl);
-            impl.allocator.destroy(self);
-        }
-        return impl.ref_count;
+    pub inline fn run(
+        self: *ICoreApplication,
+        viewSource: *view.IFrameworkViewSource,
+    ) winrt.HRESULT {
+        return self.vtbl.Run(self, viewSource);
     }
 
-    fn getIids(self: *IApplication, iidCount: *u32, iids: *?**GUID) callconv(WINAPI) HRESULT {
-        _ = self;
-        _ = iidCount;
-        _ = iids;
-        return winrt_core.E_NOTIMPL;
-    }
-
-    fn getRuntimeClassName(self: *IApplication, className: *HSTRING) callconv(WINAPI) HRESULT {
-        _ = self;
-        const name = "ZigUWP.ModularApp.App";
-        const hstr = hstring.create(name) catch return winrt_core.E_FAIL;
-        className.* = hstr;
-        return winrt_core.S_OK;
-    }
-
-    fn getTrustLevel(self: *IApplication, trustLevel: *TrustLevel) callconv(WINAPI) HRESULT {
-        _ = self;
-        trustLevel.* = .FullTrust;
-        return winrt_core.S_OK;
-    }
-
-    fn onLaunched(self: *IApplication, args: *anyopaque) callconv(WINAPI) void {
-        _ = self;
-        _ = args;
-        logger.info("Application.OnLaunched called", .{});
-
-        // Create and run the UWP application
-        const allocator = std.heap.page_allocator; // Use page allocator for simplicity
-
-        var uwp_app = uwp_application.UWPApplication.init(allocator);
-        defer uwp_app.deinit();
-
-        uwp_app.startup() catch |err| {
-            logger.critical("Failed to startup UWP app: {s}", .{@errorName(err)});
-            return;
-        };
-
-        uwp_app.createViewSource() catch |err| {
-            logger.critical("Failed to create view source: {s}", .{@errorName(err)});
-            return;
-        };
-
-        uwp_app.run() catch |err| {
-            logger.critical("UWP app run failed: {s}", .{@errorName(err)});
-            return;
-        };
-
-        logger.info("Application completed successfully", .{});
+    pub inline fn getCurrentView(
+        self: *ICoreApplication,
+        out: *?*ICoreApplicationView,
+    ) winrt.HRESULT {
+        return self.vtbl.GetCurrentView(self, out);
     }
 };
 
-const vtbl = IApplication.IApplicationVtbl{
-    .QueryInterface = UWPApplicationImpl.queryInterface,
-    .AddRef = UWPApplicationImpl.addRef,
-    .Release = UWPApplicationImpl.release,
-    .GetIids = UWPApplicationImpl.getIids,
-    .GetRuntimeClassName = UWPApplicationImpl.getRuntimeClassName,
-    .GetTrustLevel = UWPApplicationImpl.getTrustLevel,
-    .OnLaunched = UWPApplicationImpl.onLaunched,
-};
+// ============================================================================
+// ICoreApplicationView
+// ============================================================================
 
-// Application factory
-pub const ApplicationFactory = struct {
-    ref_count: u32,
-    allocator: std.mem.Allocator,
+pub const ICoreApplicationView = extern struct {
+    vtbl: *const VTable,
 
-    pub fn create(allocator: std.mem.Allocator) !*activation.IActivationFactory {
-        const factory = try allocator.create(ApplicationFactory);
-        factory.* = ApplicationFactory{
-            .ref_count = 1,
-            .allocator = allocator,
-        };
+    pub const VTable = extern struct {
+        // IInspectable
+        QueryInterface: *const fn (
+            *ICoreApplicationView,
+            *const winrt.GUID,
+            *?*anyopaque,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
 
-        const factory_interface = try allocator.create(activation.IActivationFactory);
-        factory_interface.* = activation.IActivationFactory{
-            .vtbl = &factory_vtbl,
-        };
+        AddRef: *const fn (
+            *ICoreApplicationView,
+        ) callconv(winrt.WINAPI) u32,
 
-        // Store the implementation
-        @as(*?*anyopaque, @ptrCast(factory_interface)).* = factory;
+        Release: *const fn (
+            *ICoreApplicationView,
+        ) callconv(winrt.WINAPI) u32,
 
-        return factory_interface;
+        GetIids: *const fn (
+            *ICoreApplicationView,
+            *u32,
+            *?[*]winrt.GUID,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        GetRuntimeClassName: *const fn (
+            *ICoreApplicationView,
+            *winrt.HSTRING,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        GetTrustLevel: *const fn (
+            *ICoreApplicationView,
+            *winrt.TrustLevel,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        // ICoreApplicationView methods
+        get_CoreWindow: *const fn (
+            *ICoreApplicationView,
+            *?*window.ICoreWindow,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        add_Activated: *const fn (
+            *ICoreApplicationView,
+            ?*anyopaque,
+            *winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        remove_Activated: *const fn (
+            *ICoreApplicationView,
+            winrt.EventRegistrationToken,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        get_IsMain: *const fn (
+            *ICoreApplicationView,
+            *bool,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+
+        get_IsHosted: *const fn (
+            *ICoreApplicationView,
+            *bool,
+        ) callconv(winrt.WINAPI) winrt.HRESULT,
+    };
+
+    // Helper methods
+    pub inline fn queryInterface(
+        self: *ICoreApplicationView,
+        riid: *const winrt.GUID,
+        ppv: *?*anyopaque,
+    ) winrt.HRESULT {
+        return self.vtbl.QueryInterface(self, riid, ppv);
     }
 
-    fn queryInterface(self: *activation.IActivationFactory, riid: *const GUID, ppvObject: *?*anyopaque) callconv(WINAPI) HRESULT {
-        if (std.mem.eql(u8, std.mem.asBytes(riid), std.mem.asBytes(&com_base.IID_IUnknown)) or
-            std.mem.eql(u8, std.mem.asBytes(riid), std.mem.asBytes(&com_base.IID_IInspectable)) or
-            std.mem.eql(u8, std.mem.asBytes(riid), std.mem.asBytes(&com_base.IID_IActivationFactory)))
-        {
-            _ = self.vtbl.AddRef(self);
-            ppvObject.* = self;
-            return winrt_core.S_OK;
-        }
-        ppvObject.* = null;
-        return winrt_core.E_NOINTERFACE;
+    pub inline fn addRef(self: *ICoreApplicationView) u32 {
+        return self.vtbl.AddRef(self);
     }
 
-    fn addRef(self: *activation.IActivationFactory) callconv(WINAPI) u32 {
-        const impl = @as(*ApplicationFactory, @alignCast(@ptrCast(@as(*?*anyopaque, @ptrCast(self)).*)));
-        impl.ref_count += 1;
-        return impl.ref_count;
+    pub inline fn release(self: *ICoreApplicationView) u32 {
+        return self.vtbl.Release(self);
     }
 
-    fn release(self: *activation.IActivationFactory) callconv(WINAPI) u32 {
-        const impl = @as(*ApplicationFactory, @alignCast(@ptrCast(@as(*?*anyopaque, @ptrCast(self)).*)));
-        impl.ref_count -= 1;
-        if (impl.ref_count == 0) {
-            impl.allocator.destroy(impl);
-            impl.allocator.destroy(self);
-        }
-        return impl.ref_count;
+    pub inline fn getCoreWindow(
+        self: *ICoreApplicationView,
+        out: *?*window.ICoreWindow,
+    ) winrt.HRESULT {
+        return self.vtbl.get_CoreWindow(self, out);
     }
-
-    fn getIids(self: *activation.IActivationFactory, iidCount: *u32, iids: *?**GUID) callconv(WINAPI) HRESULT {
-        _ = self;
-        _ = iidCount;
-        _ = iids;
-        return winrt_core.E_NOTIMPL;
-    }
-
-    fn getRuntimeClassName(self: *activation.IActivationFactory, className: *HSTRING) callconv(WINAPI) HRESULT {
-        _ = self;
-        const name = "ZigUWP.ModularApp.App";
-        const hstr = hstring.create(name) catch return winrt_core.E_FAIL;
-        className.* = hstr;
-        return winrt_core.S_OK;
-    }
-
-    fn getTrustLevel(self: *activation.IActivationFactory, trustLevel: *TrustLevel) callconv(WINAPI) HRESULT {
-        _ = self;
-        trustLevel.* = .FullTrust;
-        return winrt_core.S_OK;
-    }
-
-    fn activateInstance(self: *activation.IActivationFactory, instance: *?*anyopaque) callconv(WINAPI) HRESULT {
-        const impl = @as(*ApplicationFactory, @alignCast(@ptrCast(@as(*?*anyopaque, @ptrCast(self)).*)));
-        const app = UWPApplicationImpl.create(impl.allocator) catch return winrt_core.E_FAIL;
-        instance.* = app;
-        return winrt_core.S_OK;
-    }
-};
-
-const factory_vtbl = activation.IActivationFactory.IActivationFactoryVtbl{
-    .QueryInterface = ApplicationFactory.queryInterface,
-    .AddRef = ApplicationFactory.addRef,
-    .Release = ApplicationFactory.release,
-    .GetIids = ApplicationFactory.getIids,
-    .GetRuntimeClassName = ApplicationFactory.getRuntimeClassName,
-    .GetTrustLevel = ApplicationFactory.getTrustLevel,
-    .ActivateInstance = ApplicationFactory.activateInstance,
 };

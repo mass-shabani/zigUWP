@@ -1,112 +1,150 @@
+// src/implementation/view_source.zig
+// Implementation of IFrameworkViewSource
+// This is the entry point that CoreApplication.Run calls
+
 const std = @import("std");
-const winrt_core = @import("../core/winrt_core.zig");
-const com_base = @import("../core/com_base.zig");
+const winrt = @import("../core/winrt_core.zig");
+const com = @import("../core/com_base.zig");
 const view_interfaces = @import("../interfaces/view.zig");
 const framework_view = @import("framework_view.zig");
-const error_handling = @import("../utils/error_handling.zig");
+const logger = @import("../utils/debug_logger.zig");
 
-const WINAPI = winrt_core.WINAPI;
-const HRESULT = winrt_core.HRESULT;
-const GUID = winrt_core.GUID;
-const HSTRING = winrt_core.HSTRING;
-const TrustLevel = winrt_core.TrustLevel;
-const S_OK = winrt_core.S_OK;
+// ============================================================================
+// ViewSource Implementation
+// ============================================================================
 
-// Our custom FrameworkViewSource implementation
-pub const UWPFrameworkViewSource = struct {
-    vtbl: *const view_interfaces.IFrameworkViewSource.IFrameworkViewSourceVtbl,
-    base_ptr: *com_base.ComObjectBase,
+pub const ViewSource = struct {
+    // COM object
+    com_obj: com.ComObject,
+
+    // IFrameworkViewSource interface
+    view_source_vtbl: view_interfaces.IFrameworkViewSource.VTable,
 
     const Self = @This();
 
-    pub fn create(allocator: std.mem.Allocator) !*Self {
-        const base = try allocator.create(com_base.ComObjectBase);
-        base.* = com_base.ComObjectBase.init(allocator);
-        
-        const instance = try allocator.create(Self);
-        instance.* = Self{
-            .vtbl = &VTable,
-            .base_ptr = base,
+    /// Create new ViewSource instance
+    pub fn create(allocator: std.mem.Allocator) !*view_interfaces.IFrameworkViewSource {
+        logger.info("Creating ViewSource...", .{});
+
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+
+        self.* = Self{
+            .com_obj = com.ComObject.init(allocator),
+            .view_source_vtbl = .{
+                .QueryInterface = queryInterface,
+                .AddRef = addRef,
+                .Release = release,
+                .GetIids = getIids,
+                .GetRuntimeClassName = getRuntimeClassName,
+                .GetTrustLevel = getTrustLevel,
+                .CreateView = createView,
+            },
         };
-        return instance;
+
+        logger.debug("ViewSource created successfully", .{});
+
+        // Return as IFrameworkViewSource interface
+        return @ptrCast(&self.view_source_vtbl);
     }
 
-    pub fn destroy(self: *Self) void {
-        const allocator = self.base_ptr.allocator;
-        allocator.destroy(self.base_ptr);
-        allocator.destroy(self);
+    /// Get Self from interface pointer
+    fn getSelf(iface: *view_interfaces.IFrameworkViewSource) *Self {
+        const iface_vtable: *view_interfaces.IFrameworkViewSource.VTable = @ptrCast(iface);
+        return @fieldParentPtr("view_source_vtbl", iface_vtable);
     }
 
-    // IUnknown implementation
-    fn queryInterface(self: *view_interfaces.IFrameworkViewSource, riid: *const GUID, ppvObject: *?*anyopaque) callconv(WINAPI) HRESULT {
-        const supported_interfaces = [_]GUID{
-            com_base.IID_IUnknown,
-            com_base.IID_IInspectable,
+    // ========================================================================
+    // IUnknown Implementation
+    // ========================================================================
+
+    fn queryInterface(
+        iface: *view_interfaces.IFrameworkViewSource,
+        riid: *const winrt.GUID,
+        ppv: *?*anyopaque,
+    ) callconv(winrt.WINAPI) winrt.HRESULT {
+        const self = getSelf(iface);
+        _ = self;
+
+        const supported_iids = [_]winrt.GUID{
+            com.IID_IUnknown,
+            com.IID_IInspectable,
             view_interfaces.IID_IFrameworkViewSource,
         };
 
-        return com_base.ComObjectBase.queryInterfaceBase(riid, ppvObject, self, &supported_interfaces);
+        return com.queryInterfaceHelper(riid, ppv, iface, &supported_iids);
     }
 
-    fn addRef(self: *view_interfaces.IFrameworkViewSource) callconv(WINAPI) u32 {
-        const instance: *Self = @alignCast(@ptrCast(self));
-        return instance.base_ptr.addRef();
+    fn addRef(
+        iface: *view_interfaces.IFrameworkViewSource,
+    ) callconv(winrt.WINAPI) u32 {
+        const self = getSelf(iface);
+        return self.com_obj.addRef();
     }
 
-    fn release(self: *view_interfaces.IFrameworkViewSource) callconv(WINAPI) u32 {
-        const instance: *Self = @alignCast(@ptrCast(self));
-        const ref_count = instance.base_ptr.release();
+    fn release(
+        iface: *view_interfaces.IFrameworkViewSource,
+    ) callconv(winrt.WINAPI) u32 {
+        const self = getSelf(iface);
+        const count = self.com_obj.release();
 
-        if (ref_count == 0) {
-            instance.destroy();
+        if (count == 0) {
+            logger.debug("ViewSource ref count = 0, destroying", .{});
+            const allocator = self.com_obj.allocator;
+            allocator.destroy(self);
         }
 
-        return ref_count;
+        return count;
     }
 
-    // IInspectable implementation
-    fn getIids(self: *view_interfaces.IFrameworkViewSource, iidCount: *u32, iids: *?**GUID) callconv(WINAPI) HRESULT {
-        _ = self;
-        return com_base.InspectableHelpers.getIidsEmpty(iidCount, iids);
+    // ========================================================================
+    // IInspectable Implementation
+    // ========================================================================
+
+    fn getIids(
+        iface: *view_interfaces.IFrameworkViewSource,
+        count: *u32,
+        iids: *?[*]winrt.GUID,
+    ) callconv(winrt.WINAPI) winrt.HRESULT {
+        return com.InspectableDefaults.getIidsEmpty(@ptrCast(iface), count, iids);
     }
 
-    fn getRuntimeClassName(self: *view_interfaces.IFrameworkViewSource, className: *HSTRING) callconv(WINAPI) HRESULT {
-        _ = self;
-        return com_base.InspectableHelpers.getRuntimeClassNameEmpty(className);
+    fn getRuntimeClassName(
+        iface: *view_interfaces.IFrameworkViewSource,
+        name: *winrt.HSTRING,
+    ) callconv(winrt.WINAPI) winrt.HRESULT {
+        return com.InspectableDefaults.getRuntimeClassNameEmpty(@ptrCast(iface), name);
     }
 
-    fn getTrustLevel(self: *view_interfaces.IFrameworkViewSource, trustLevel: *TrustLevel) callconv(WINAPI) HRESULT {
-        _ = self;
-        return com_base.InspectableHelpers.getTrustLevelBasic(trustLevel);
+    fn getTrustLevel(
+        iface: *view_interfaces.IFrameworkViewSource,
+        level: *winrt.TrustLevel,
+    ) callconv(winrt.WINAPI) winrt.HRESULT {
+        return com.InspectableDefaults.getTrustLevelBase(@ptrCast(iface), level);
     }
 
-    // IFrameworkViewSource implementation
-    fn createView(self: *view_interfaces.IFrameworkViewSource, view: *?*view_interfaces.IFrameworkView) callconv(WINAPI) HRESULT {
-        const instance: *Self = @alignCast(@ptrCast(self));
+    // ========================================================================
+    // IFrameworkViewSource Implementation
+    // ========================================================================
 
-        std.debug.print("FrameworkViewSource: CreateView called\n", .{});
+    fn createView(
+        iface: *view_interfaces.IFrameworkViewSource,
+        out: *?*view_interfaces.IFrameworkView,
+    ) callconv(winrt.WINAPI) winrt.HRESULT {
+        const self = getSelf(iface);
 
-        // Create our custom FrameworkView
-        const framework_view_instance = framework_view.UWPFrameworkView.create(instance.base_ptr.allocator) catch |err| {
-            std.debug.print("Failed to create FrameworkView: {}\n", .{err});
-            view.* = null;
-            return @bitCast(winrt_core.E_FAIL);
+        logger.info("ViewSource.CreateView called", .{});
+
+        // Create FrameworkView
+        const view = framework_view.FrameworkView.create(self.com_obj.allocator) catch {
+            logger.err("Failed to create FrameworkView", .{});
+            out.* = null;
+            return @bitCast(winrt.E_FAIL);
         };
 
-        view.* = @ptrCast(framework_view_instance);
+        out.* = view;
+        logger.info("FrameworkView created successfully", .{});
 
-        std.debug.print("FrameworkViewSource: CreateView completed successfully\n", .{});
-        return S_OK;
+        return winrt.S_OK;
     }
-
-    // VTable for this implementation
-    const VTable = view_interfaces.IFrameworkViewSource.IFrameworkViewSourceVtbl{
-        .QueryInterface = queryInterface,
-        .AddRef = addRef,
-        .Release = release,
-        .GetIids = getIids,
-        .GetRuntimeClassName = getRuntimeClassName,
-        .GetTrustLevel = getTrustLevel,
-        .CreateView = createView,
-    };
 };

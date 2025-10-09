@@ -1,4 +1,4 @@
-// src/core/uwp_application.zig
+// src\core\uwp_application.zig
 const std = @import("std");
 const winrt_core = @import("winrt_core.zig");
 const activation = @import("activation.zig");

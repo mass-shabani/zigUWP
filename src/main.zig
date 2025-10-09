@@ -1,55 +1,45 @@
 // src/main.zig
+// Entry point for ZigUWP application
+// This is a Pure UWP app that uses WinRT CoreApplication
+
 const std = @import("std");
 const builtin = @import("builtin");
 const windows = std.os.windows;
-const HRESULT = windows.HRESULT;
-const WINAPI = windows.WINAPI;
-const HINSTANCE = windows.HINSTANCE;
-const LPWSTR = windows.LPWSTR;
 
-// Windows constants
-const SW_SHOW: i32 = 5;
-
-// Import debug logger
+// Core modules
+const winrt = @import("core/winrt_core.zig");
+const activation = @import("core/activation.zig");
 const logger = @import("utils/debug_logger.zig");
 
-// Import our modular WinRT components
-const winrt_core = @import("core/winrt_core.zig");
-const activation = @import("core/activation.zig");
-const com_base = @import("core/com_base.zig");
-const application_interfaces = @import("interfaces/application.zig");
+// Interfaces
+const app_interfaces = @import("interfaces/application.zig");
 const view_interfaces = @import("interfaces/view.zig");
-const framework_view_impl = @import("implementation/framework_view.zig");
-const view_source_impl = @import("implementation/view_source.zig");
-const application_impl = @import("implementation/application.zig");
-const uwp_application = @import("core/uwp_application.zig");
-const error_handling = @import("utils/error_handling.zig");
-const hstring = @import("utils/hstring.zig");
-const window_interfaces = @import("interfaces/window.zig");
 
-// Global allocator
-var gpa: std.heap.GeneralPurposeAllocator(.{}) = undefined;
-var global_allocator: std.mem.Allocator = undefined;
+// Implementation
+const view_source = @import("implementation/view_source.zig");
 
-// UWP Application Manager is now in core/uwp_application.zig
-const UWPApplication = uwp_application.UWPApplication;
+// ============================================================================
+// Windows API Declarations
+// ============================================================================
 
-// Windows API declarations
-extern "kernel32" fn OutputDebugStringW(lpOutputString: [*:0]const u16) callconv(WINAPI) void;
-extern "kernel32" fn GetModuleHandleW(lpModuleName: ?[*:0]const u16) callconv(WINAPI) ?HINSTANCE;
-extern "kernel32" fn GetCommandLineW() callconv(WINAPI) LPWSTR;
-extern "kernel32" fn ExitProcess(exit_code: u32) callconv(WINAPI) noreturn;
+extern "kernel32" fn GetModuleHandleW(?[*:0]const u16) callconv(windows.WINAPI) ?windows.HINSTANCE;
+extern "kernel32" fn GetCommandLineW() callconv(windows.WINAPI) [*:0]u16;
+extern "kernel32" fn ExitProcess(u32) callconv(windows.WINAPI) noreturn;
+
 extern "user32" fn MessageBoxW(
-    hWnd: ?windows.HWND,
-    lpText: [*:0]const u16,
-    lpCaption: [*:0]const u16,
-    uType: u32,
-) callconv(WINAPI) i32;
+    ?windows.HWND,
+    [*:0]const u16,
+    [*:0]const u16,
+    u32,
+) callconv(windows.WINAPI) i32;
 
-// MessageBox constants
 const MB_OK: u32 = 0x00000000;
 const MB_ICONINFORMATION: u32 = 0x00000040;
 const MB_ICONERROR: u32 = 0x00000010;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 fn showMessageBox(title: []const u8, message: []const u8, is_error: bool) void {
     var title_wide: [256]u16 = undefined;
@@ -67,159 +57,165 @@ fn showMessageBox(title: []const u8, message: []const u8, is_error: bool) void {
     }
 }
 
-/// Main entry point for UWP application
-pub fn wWinMain(
-    hInstance: HINSTANCE,
-    hPrevInstance: ?HINSTANCE,
-    pCmdLine: LPWSTR,
-    nCmdShow: i32,
-) callconv(WINAPI) i32 {
-    _ = hInstance;
-    _ = hPrevInstance;
-    _ = pCmdLine;
-    _ = nCmdShow;
+// ============================================================================
+// Main Application Logic
+// ============================================================================
 
-    // Initialize global allocator
-    gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    global_allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked == .leak) {
-            // در production این را لاگ کنید
-        }
+fn runUWPApplication(allocator: std.mem.Allocator) !void {
+    logger.separator('=');
+    logger.info("ZigUWP - Pure WinRT Application", .{});
+    logger.separator('=');
+
+    // Step 1: Initialize WinRT Runtime
+    logger.info("Step 1: Initializing WinRT runtime", .{});
+    var runtime = activation.Runtime.init();
+    defer runtime.shutdown();
+
+    try runtime.startup();
+
+    // Step 2: Create ViewSource
+    logger.info("Step 2: Creating IFrameworkViewSource", .{});
+    const view_source_ptr = try view_source.ViewSource.create(allocator);
+    defer _ = view_source_ptr.release();
+
+    // Step 3: Get CoreApplication
+    logger.info("Step 3: Getting CoreApplication singleton", .{});
+
+    const core_app_ptr = try activation.ActivationFactory.get(
+        allocator,
+        activation.RuntimeClass.CORE_APPLICATION,
+        &app_interfaces.IID_ICoreApplication,
+    );
+
+    const core_app: *app_interfaces.ICoreApplication = @ptrCast(@alignCast(core_app_ptr));
+    defer _ = core_app.release();
+
+    logger.info("CoreApplication obtained successfully", .{});
+
+    // Step 4: Run the application
+    logger.separator('=');
+    logger.info("Step 4: Starting CoreApplication.Run()", .{});
+    logger.info("This will call ViewSource.CreateView()", .{});
+    logger.info("Then IFrameworkView lifecycle methods", .{});
+    logger.separator('=');
+
+    const hr = core_app.run(view_source_ptr);
+
+    if (winrt.SUCCEEDED(hr)) {
+        logger.info("CoreApplication.Run() completed successfully!", .{});
+    } else {
+        logger.err("CoreApplication.Run() failed: 0x{X:0>8}", .{@as(u32, @bitCast(hr))});
+        return error.CoreApplicationRunFailed;
     }
 
-    // Initialize global logger - اولین کاری که باید انجام شود!
-    logger.initGlobalLogger(global_allocator) catch |err| {
-        // اگر logger init نشد، با MessageBox خطا را نشان بده
+    logger.separator('=');
+    logger.info("Application exiting normally", .{});
+    logger.separator('=');
+}
+
+// ============================================================================
+// wWinMain - Windows Entry Point for GUI apps
+// ============================================================================
+
+pub fn wWinMain(
+    _: windows.HINSTANCE,
+    _: ?windows.HINSTANCE,
+    _: [*:0]u16,
+    _: i32,
+) callconv(windows.WINAPI) i32 {
+    // Create allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Initialize logger
+    logger.initGlobalLogger(allocator) catch |err| {
         var buf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, "Failed to initialize logger: {s}", .{@errorName(err)}) catch "Logger init failed";
+        const msg = std.fmt.bufPrint(
+            &buf,
+            "Failed to initialize logger: {s}",
+            .{@errorName(err)},
+        ) catch "Logger init failed";
         showMessageBox("ZigUWP Error", msg, true);
         return 1;
     };
-    defer logger.deinitGlobalLogger(global_allocator);
-
-    // حالا می‌توانیم لاگ کنیم!
-    logger.separator('=');
-    logger.info("wWinMain ENTRY POINT", .{});
-    logger.separator('=');
+    defer logger.deinitGlobalLogger(allocator);
 
     // Log system information
     if (logger.getLogger()) |log| {
         log.logSystemInfo();
     }
 
-    // Show startup message box
-    logger.info("Showing startup message box", .{});
+    // Show startup notification
+    logger.info("Showing startup notification", .{});
     showMessageBox(
         "ZigUWP Starting",
-        "ZigUWP application is initializing...\n\nCheck logs at:\n%LOCALAPPDATA%\\ziguwp_debug.log",
+        "ZigUWP application is initializing...\n\n" ++
+            "Logs: %LOCALAPPDATA%\\ziguwp_debug.log",
         false,
     );
 
-    // Create and initialize UWP application
-    logger.info("Creating UWP application instance", .{});
-    var uwp_app = UWPApplication.init(global_allocator);
-    defer {
-        logger.info("Deinitializing UWP application", .{});
-        uwp_app.deinit();
-    }
-
-    // Startup WinRT systems
-    logger.info("Starting up WinRT systems", .{});
-    uwp_app.startup() catch |err| {
-        logger.critical("Failed to startup WinRT: {s}", .{@errorName(err)});
+    // Run UWP application
+    runUWPApplication(allocator) catch |err| {
+        logger.critical("Application failed: {s}", .{@errorName(err)});
 
         var buf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, "Failed to startup WinRT:\n{s}", .{@errorName(err)}) catch "Startup failed";
+        const msg = std.fmt.bufPrint(
+            &buf,
+            "Application failed:\n{s}\n\nCheck log file for details.",
+            .{@errorName(err)},
+        ) catch "Application failed";
         showMessageBox("ZigUWP Error", msg, true);
         return 1;
     };
 
-    // Create view source
-    logger.info("Creating view source", .{});
-    uwp_app.createViewSource() catch |err| {
-        logger.critical("Failed to create view source: {s}", .{@errorName(err)});
-
-        var buf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, "Failed to create view source:\n{s}", .{@errorName(err)}) catch "View source creation failed";
-        showMessageBox("ZigUWP Error", msg, true);
-        return 1;
-    };
-
-    // Run the application
-    logger.info("Running application main loop", .{});
-    uwp_app.run() catch |err| {
-        logger.critical("Application run failed: {s}", .{@errorName(err)});
-
-        var buf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, "Application failed to run:\n{s}", .{@errorName(err)}) catch "Run failed";
-        showMessageBox("ZigUWP Error", msg, true);
-        return 1;
-    };
-
-    logger.separator('=');
-    logger.info("UWP Application Exiting Normally", .{});
-    logger.separator('=');
-
+    logger.info("Application completed successfully", .{});
     return 0;
 }
 
-/// Export as CRT startup function
-pub export fn wWinMainCRTStartup() callconv(.C) noreturn {
-    // اولین پیام - قبل از logger
-    const first_msg = "wWinMainCRTStartup CALLED - Entry point reached!\n";
-    var wide_buffer: [256]u16 = undefined;
-    if (std.unicode.utf8ToUtf16Le(&wide_buffer, first_msg)) |len| {
-        if (len < wide_buffer.len) {
-            wide_buffer[len] = 0;
-            OutputDebugStringW(@ptrCast(&wide_buffer));
-        }
-    } else |_| {}
+// ============================================================================
+// wWinMainCRTStartup - CRT Entry Point
+// ============================================================================
 
+pub export fn wWinMainCRTStartup() callconv(.C) noreturn {
     const hInstance = GetModuleHandleW(null);
     const pCmdLine = GetCommandLineW();
 
+    // HINSTANCE can be null in some cases, provide a dummy value
+    const instance = hInstance orelse blk: {
+        // Create a non-zero dummy HINSTANCE
+        const dummy_addr: usize = 0x400000; // Typical base address
+        break :blk @as(windows.HINSTANCE, @ptrFromInt(dummy_addr));
+    };
+
     const result = wWinMain(
-        hInstance orelse undefined,
+        instance,
         null,
         pCmdLine,
-        SW_SHOW,
+        5, // SW_SHOW
     );
-
-    // Log قبل از exit
-    var buf: [128]u8 = undefined;
-    const msg = std.fmt.bufPrint(&buf, "Exiting with code: {}\n", .{result}) catch "Exiting\n";
-    var wide_buf: [256]u16 = undefined;
-    if (std.unicode.utf8ToUtf16Le(&wide_buf, msg)) |len| {
-        if (len < wide_buf.len) {
-            wide_buf[len] = 0;
-            OutputDebugStringW(@ptrCast(&wide_buf));
-        }
-    } else |_| {}
 
     ExitProcess(@intCast(result));
 }
 
-// برای سازگاری، اگر کسی به اشتباه با zig build run اجرا کند
+// ============================================================================
+// main() - For error messages when run from CLI
+// ============================================================================
+
 pub fn main() !void {
     std.debug.print("\n", .{});
-    std.debug.print("⚠️  WARNING: This is a UWP application!\n", .{});
-    std.debug.print("⚠️  It cannot be run directly from command line.\n", .{});
+    std.debug.print("⚠️  This is a UWP application!\n", .{});
+    std.debug.print("⚠️  Cannot be run from command line.\n", .{});
     std.debug.print("\n", .{});
-    std.debug.print("To run this application:\n", .{});
-    std.debug.print("  1. Build and package: zig build all-appx\n", .{});
-    std.debug.print("  2. Find it in Start Menu: 'ZigUWP'\n", .{});
-    std.debug.print("  3. Or use: explorer.exe shell:AppsFolder\\...\n", .{});
+    std.debug.print("To run:\n", .{});
+    std.debug.print("  1. Build package: zig build package\n", .{});
+    std.debug.print("  2. Install: zig build install-appx\n", .{});
+    std.debug.print("  3. Launch from Start Menu\n", .{});
     std.debug.print("\n", .{});
     std.debug.print("For debugging:\n", .{});
-    std.debug.print("  1. Download DebugView from Microsoft Sysinternals\n", .{});
-    std.debug.print("  2. Run DebugView as Administrator\n", .{});
-    std.debug.print("  3. Enable: Capture > Capture Global Win32\n", .{});
-    std.debug.print("  4. Launch the UWP app from Start Menu\n", .{});
-    std.debug.print("  5. Watch logs in DebugView\n", .{});
-    std.debug.print("  6. Or check: %LOCALAPPDATA%\\ziguwp_debug.log\n", .{});
+    std.debug.print("  - Use DebugView (run as Admin)\n", .{});
+    std.debug.print("  - Check: %%LOCALAPPDATA%%\\ziguwp_debug.log\n", .{});
     std.debug.print("\n", .{});
 
-    return error.UWPAppCannotRunDirectly;
+    return error.UWPApplicationCannotRunDirectly;
 }

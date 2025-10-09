@@ -1,3 +1,5 @@
+# debug\diagnostic.ps1
+
 # اجرا با: PowerShell به عنوان Administrator
 # سپس: .\diagnostic.ps1
 

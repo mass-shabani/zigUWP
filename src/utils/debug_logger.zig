@@ -1,4 +1,5 @@
-// src/utils/debug_logger.zig
+// src\utils\debug_logger.zig
+
 // سیستم Logging پیشرفته برای UWP در Zig
 const std = @import("std");
 const windows = std.os.windows;

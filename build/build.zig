@@ -1,3 +1,4 @@
+// build/build.zig
 const std = @import("std");
 const appx = @import("build-appx.zig");
 
@@ -5,131 +6,109 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // *** Build UWP Application با تنظیمات صحیح
+    // ========================================================================
+    // Main UWP Executable
+    // ========================================================================
+
     const exe = b.addExecutable(.{
         .name = "zigUWP",
         .root_source_file = b.path("../src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .win32_manifest = null, // No manifest embedding for UWP
     });
 
-    // CRITICAL: تنظیمات UWP - این خط فوق‌العاده مهم است!
-    // UWP apps باید با subsystem WINDOWS کامپایل شوند نه CONSOLE
+    // CRITICAL: Must be Windows subsystem for UWP
     exe.subsystem = .Windows;
-
-    // Disable stack protection for better UWP compatibility
-    // exe.stack_protector = false;
 
     // Add library search path
     exe.addLibraryPath(b.path("../Libs"));
 
-    // Link required Windows libraries for UWP
+    // Link required libraries
+    exe.linkLibC();
     exe.linkSystemLibrary("ole32"); // COM support
     exe.linkSystemLibrary("WindowsApp"); // WinRT runtime
     exe.linkSystemLibrary("runtimeobject"); // WinRT runtime objects
     exe.linkSystemLibrary("combase"); // COM base library
 
-    // Link C runtime
-    exe.linkLibC();
-
     b.installArtifact(exe);
 
+    // Run command (will show error message if run directly)
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    const run_step = b.step("run", "Run the main UWP application");
-    run_step.dependOn(&run_cmd.step);
-
-    // Create UWP package after installation
-    _ = appx.createPackageStep(b);
-
-    // *** Module testing executable
-    const module_test_exe = b.addExecutable(.{
-        .name = "module_test",
-        .root_source_file = b.path("../src/test_modules.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // تست‌ها می‌توانند Console باشند
-    module_test_exe.subsystem = .Console;
-
-    module_test_exe.addLibraryPath(b.path("../Libs"));
-    module_test_exe.linkSystemLibrary("ole32");
-    module_test_exe.linkSystemLibrary("WindowsApp");
-    module_test_exe.linkSystemLibrary("runtimeobject");
-    module_test_exe.linkSystemLibrary("combase");
-    module_test_exe.linkLibC();
-
-    b.installArtifact(module_test_exe);
-
-    const run_module_test_cmd = b.addRunArtifact(module_test_exe);
-    run_module_test_cmd.step.dependOn(b.getInstallStep());
-
-    // Pass arguments to run commands
     if (b.args) |args| {
         run_cmd.addArgs(args);
-        run_module_test_cmd.addArgs(args);
     }
 
-    const module_test_step = b.step("test-modules", "Test individual modules");
-    module_test_step.dependOn(&run_module_test_cmd.step);
+    const run_step = b.step("run", "Run the UWP application (will show error)");
+    run_step.dependOn(&run_cmd.step);
 
-    // *** Unit tests for the modules
-    const unit_tests = b.addTest(.{
-        .root_source_file = b.path("../src/main.zig"),
+    // ========================================================================
+    // Package Steps
+    // ========================================================================
+
+    _ = appx.createPackageStep(b);
+
+    // ========================================================================
+    // Test Logger
+    // ========================================================================
+
+    const test_logger_exe = b.addExecutable(.{
+        .name = "test_logger",
+        .root_source_file = b.path("../src/test_logger.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    unit_tests.addLibraryPath(b.path("../Libs"));
-    unit_tests.linkSystemLibrary("ole32");
-    unit_tests.linkSystemLibrary("WindowsApp");
-    unit_tests.linkSystemLibrary("runtimeobject");
-    unit_tests.linkSystemLibrary("combase");
-    unit_tests.linkLibC();
+    test_logger_exe.subsystem = .Console;
+    test_logger_exe.linkLibC();
 
-    const run_unit_tests = b.addRunArtifact(unit_tests);
-    const unit_test_step = b.step("test", "Run unit tests");
-    unit_test_step.dependOn(&run_unit_tests.step);
+    b.installArtifact(test_logger_exe);
 
-    // *** Clean step
+    const run_test_logger = b.addRunArtifact(test_logger_exe);
+    run_test_logger.step.dependOn(b.getInstallStep());
+
+    const test_logger_step = b.step("test-logger", "Test the logger");
+    test_logger_step.dependOn(&run_test_logger.step);
+
+    // ========================================================================
+    // Clean Step
+    // ========================================================================
+
     _ = appx.createCleanStep(b);
 
-    // *** Documentation step
-    const doc_step = b.step("docs", "Generate documentation");
-    const doc_obj = b.addObject(.{
-        .name = "zigUWP-docs",
-        .root_source_file = b.path("../src/main.zig"),
-        .target = target,
-        .optimize = .Debug,
-    });
+    // ========================================================================
+    // Help
+    // ========================================================================
 
-    const docs = doc_obj.getEmittedDocs();
-    doc_step.dependOn(&b.addInstallDirectory(.{
-        .source_dir = docs,
-        .install_dir = .prefix,
-        .install_subdir = "docs",
-    }).step);
-
-    // *** Help step
-    const help_step = b.step("help", "Show available build commands");
-
+    const help_step = b.step("help", "Show available commands");
     const help_cmd = b.addSystemCommand(&.{
         "PowerShell",
         "-Command",
-        \\Write-Host 'Available commands:' -ForegroundColor Cyan
-        \\Write-Host '  zig build run           - Run the main UWP application'
-        \\Write-Host '  zig build test-modules  - Test individual modules'
-        \\Write-Host '  zig build test          - Run unit tests'
-        \\Write-Host '  zig build docs          - Generate documentation'
-        \\Write-Host '  zig build package       - Create UWP package (appx)'
-        \\Write-Host '  zig build sign-appx     - Sign UWP package'
-        \\Write-Host '  zig build install-appx  - Install UWP package'
-        \\Write-Host '  zig build all-appx      - Build, package, sign and install UWP'
-        \\Write-Host '  zig build clean         - Clean build artifacts'
-        \\Write-Host '  zig build help          - Show this help'
+        \\Write-Host '╔════════════════════════════════════════════════════╗' -ForegroundColor Cyan
+        \\Write-Host '║            ZigUWP Build Commands                   ║' -ForegroundColor Cyan
+        \\Write-Host '╠════════════════════════════════════════════════════╣' -ForegroundColor Cyan
+        \\Write-Host '║                                                    ║' -ForegroundColor White
+        \\Write-Host '║  Building:                                         ║' -ForegroundColor White
+        \\Write-Host '║    zig build              - Build executable       ║' -ForegroundColor White
+        \\Write-Host '║    zig build package      - Create APPX package    ║' -ForegroundColor White
+        \\Write-Host '║    zig build sign-appx    - Sign package           ║' -ForegroundColor White
+        \\Write-Host '║    zig build install-appx - Install package        ║' -ForegroundColor White
+        \\Write-Host '║    zig build all-appx     - Build + Sign + Install ║' -ForegroundColor White
+        \\Write-Host '║                                                    ║' -ForegroundColor White
+        \\Write-Host '║  Testing:                                          ║' -ForegroundColor White
+        \\Write-Host '║    zig build test-logger  - Test logger           ║' -ForegroundColor White
+        \\Write-Host '║                                                    ║' -ForegroundColor White
+        \\Write-Host '║  Maintenance:                                      ║' -ForegroundColor White
+        \\Write-Host '║    zig build clean        - Clean build artifacts ║' -ForegroundColor White
+        \\Write-Host '║    zig build help         - Show this help        ║' -ForegroundColor White
+        \\Write-Host '║                                                    ║' -ForegroundColor White
+        \\Write-Host '╚════════════════════════════════════════════════════╝' -ForegroundColor Cyan
+        \\Write-Host ''
+        \\Write-Host 'Quick Start:' -ForegroundColor Yellow
+        \\Write-Host '  1. zig build all-appx' -ForegroundColor White
+        \\Write-Host '  2. Launch from Start Menu: "ZigUWP"' -ForegroundColor White
+        \\Write-Host '  3. Check logs: %LOCALAPPDATA%\ziguwp_debug.log' -ForegroundColor White
     });
     help_step.dependOn(&help_cmd.step);
 }

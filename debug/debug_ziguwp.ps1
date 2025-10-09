@@ -1,4 +1,5 @@
-# debug_ziguwp.ps1
+# debug\debug_ziguwp.ps1
+
 # اسکریپت جامع برای Debug کردن ZigUWP
 
 param(

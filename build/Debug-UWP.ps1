@@ -1,3 +1,4 @@
+# build\Debug-UWP.ps1
 #Requires -Version 5.1
 
 <#

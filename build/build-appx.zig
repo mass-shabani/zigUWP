@@ -1,5 +1,6 @@
+// build/build-appx.zig
 const std = @import("std");
-// build-appx.zig
+
 // =====================================================================
 // Configuration Constants
 // =====================================================================
@@ -10,7 +11,7 @@ const Config = struct {
     const sdk_base = "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\" ++ sdk_version ++ "\\x64";
 
     // Certificate Settings
-    const publisher = "CN=Massoud, O=Massoud, C=IR";
+    const publisher = "CN=Massoud, O=Massoud, C=US";
     const cert_password = "zigUWP123!";
     const cert_subject = "zigUWP Self-Signed Certificate";
     const cert_dir = "zig-out/sign";
@@ -25,14 +26,12 @@ const Config = struct {
     const appx_filename = "zigUWP.appx";
     const exe_name = "zigUWP.exe";
 
-    // Source Paths
-    const manifest_source = "AppxManifest.xml";
+    // Source Paths (relative to build/)
+    const manifest_source = "AppxManifest.xml"; // في همین پوشه build
     const assets_source = "../assets/images";
-    const libs_source = "../Libs";
 
     // Package Structure
     const assets_dest = "assets";
-    const libs_dest = "Libs";
 };
 
 // =====================================================================
@@ -48,44 +47,12 @@ const Paths = struct {
         return b.pathJoin(&.{ packageDir(b), Config.assets_dest });
     }
 
-    fn packageLibs(b: *std.Build) []const u8 {
-        return b.pathJoin(&.{ packageDir(b), Config.libs_dest });
-    }
-
     fn appxOutput(b: *std.Build) []const u8 {
         return b.pathJoin(&.{ Config.bin_dir, Config.appx_filename });
     }
 
     fn certFile(b: *std.Build) []const u8 {
         return b.pathJoin(&.{ Config.cert_dir, Config.cert_filename });
-    }
-};
-
-// =====================================================================
-// PowerShell Command Builder
-// =====================================================================
-
-const PSCommand = struct {
-    allocator: std.mem.Allocator,
-    commands: std.ArrayList([]const u8),
-
-    fn init(allocator: std.mem.Allocator) PSCommand {
-        return .{
-            .allocator = allocator,
-            .commands = std.ArrayList([]const u8).init(allocator),
-        };
-    }
-
-    fn add(self: *PSCommand, cmd: []const u8) !void {
-        try self.commands.append(cmd);
-    }
-
-    fn join(self: *PSCommand) ![]const u8 {
-        return std.mem.join(self.allocator, "; ", self.commands.items);
-    }
-
-    fn deinit(self: *PSCommand) void {
-        self.commands.deinit();
     }
 };
 
@@ -234,38 +201,14 @@ fn signAppxPackage(b: *std.Build) *std.Build.Step.Run {
     });
 }
 
-///  Installs APPX package
+/// Installs APPX package
 fn installAppxPackage(b: *std.Build) *std.Build.Step.Run {
-    const package_path = Paths.appxOutput(b);
-
     return b.addSystemCommand(&.{
         "PowerShell",
-        "-Command",
-        b.fmt(
-            \\try {{
-            \\    $packagePath = '{s}'
-            \\    $skipSigning = $env:SKIP_SIGNING -eq 'true'
-            \\    
-            \\    if (-not (Test-Path $packagePath)) {{
-            \\        throw "Package file not found: $packagePath"
-            \\    }}
-            \\    
-            \\    Write-Host '[INFO] Installing package...'
-            \\    
-            \\    try {{
-            \\        Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion
-            \\        Write-Host '[OK] Package installed successfully'
-            \\    }} catch {{
-            \\        Write-Host '[INFO] Trying development mode installation...'
-            \\        Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion -DevelopmentMode
-            \\        Write-Host '[OK] Package installed in development mode'
-            \\    }}
-            \\}} catch {{
-            \\    Write-Error "Failed to install package: $_"
-            \\    Write-Host 'Tip: Enable Developer Mode or set SKIP_SIGNING=true'
-            \\    exit 1
-            \\}}
-        , .{package_path}),
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "install-appx.ps1",
     });
 }
 
@@ -280,7 +223,6 @@ pub fn createPackageStep(b: *std.Build) *std.Build.Step {
     // Define paths
     const package_dir = Paths.packageDir(b);
     const package_assets = Paths.packageAssets(b);
-    const package_libs = Paths.packageLibs(b);
     const manifest_dest = b.pathJoin(&.{ package_dir, "AppxManifest.xml" });
     const exe_source = b.pathJoin(&.{ Config.bin_dir, Config.exe_name });
     const exe_dest = b.pathJoin(&.{ package_dir, Config.exe_name });
@@ -288,13 +230,11 @@ pub fn createPackageStep(b: *std.Build) *std.Build.Step {
     // Create directory structure
     const step_create_package_dir = createDirectory(b, package_dir, "package");
     const step_create_assets_dir = createDirectory(b, package_assets, "assets");
-    const step_create_libs_dir = createDirectory(b, package_libs, "libs");
 
     // Copy files
     const step_copy_exe = copyFile(b, exe_source, exe_dest, "executable");
     const step_copy_manifest = copyFile(b, Config.manifest_source, manifest_dest, "manifest");
     const step_copy_assets = copyDirectory(b, Config.assets_source, package_assets, "assets");
-    const step_copy_libs = copyDirectory(b, Config.libs_source, package_libs, "libraries");
 
     // Update manifest
     const step_update_manifest = updateManifest(b, manifest_dest);
@@ -308,9 +248,7 @@ pub fn createPackageStep(b: *std.Build) *std.Build.Step {
     step_update_manifest.step.dependOn(&step_copy_manifest.step);
     step_create_assets_dir.step.dependOn(&step_update_manifest.step);
     step_copy_assets.step.dependOn(&step_create_assets_dir.step);
-    step_create_libs_dir.step.dependOn(&step_copy_assets.step);
-    step_copy_libs.step.dependOn(&step_create_libs_dir.step);
-    step_create_appx.step.dependOn(&step_copy_libs.step);
+    step_create_appx.step.dependOn(&step_copy_assets.step);
 
     package_step.dependOn(&step_create_appx.step);
 

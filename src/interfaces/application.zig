@@ -1,3 +1,4 @@
+// src\interfaces\application.zig
 const std = @import("std");
 const winrt_core = @import("../core/winrt_core.zig");
 const com_base = @import("../core/com_base.zig");
@@ -170,3 +171,5 @@ pub const CoreApplicationManager = struct {
         return self.core_application.?;
     }
 };
+
+
